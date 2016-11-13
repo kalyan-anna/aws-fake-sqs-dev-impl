@@ -6,6 +6,7 @@ import org.junit.Before;
 import org.junit.Test;
 
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
@@ -59,5 +60,19 @@ public class InMemoryQueueServiceVisibilityTimeoutTest {
 		assertThat(queues.get(qName).poll().getBody(), equalTo(firstMessage));
 		assertThat(queues.get(qName).poll().getBody(), equalTo(secondMessage));
 		assertThat(queues.get(qName).poll().getBody(), equalTo(thirdMessage));
+	}
+
+	@Test
+	public void pull_shouldReceiveDifferentReceiptHandler_whenSameMessageReceivedMoreThanOnce() {
+		String qName = "Test-Queue";
+		String inputBody = "Message Body 1";
+		queueService.push(qUrlBase + qName, inputBody);
+
+		Optional<Message> msg1 = queueService.pull(qUrlBase + qName);
+		Optional<Message> msg2 = queueService.pull(qUrlBase + qName);
+		Optional<Message> msg3 = queueService.pull(qUrlBase + qName);
+		HashSet<String> receiptHandlers = new HashSet<>(Arrays.asList(msg1.get().getReceiptHandle(),
+				msg2.get().getReceiptHandle(), msg3.get().getReceiptHandle()));
+		assertThat(receiptHandlers.size(), equalTo(3));
 	}
 }

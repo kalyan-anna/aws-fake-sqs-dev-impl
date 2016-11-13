@@ -66,7 +66,7 @@ public class InMemoryQueueService implements QueueService {
 			return Optional.empty();
 		}
 
-		Message message = queues.get(qName).poll();
+		Message message = queues.get(qName).poll().clone();
 		String receiptHandle = "RH-" + UUID.randomUUID().toString();
 		message.setReceiptHandle(receiptHandle);
 		suppressMessage(qName, message);

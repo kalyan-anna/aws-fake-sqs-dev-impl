@@ -4,7 +4,6 @@ import com.amazonaws.services.sqs.model.Message;
 import org.junit.Before;
 import org.junit.Test;
 
-import java.util.Arrays;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
@@ -18,7 +17,7 @@ public class InMemoryQueueServiceTest {
 
 	private QueueService queueService;
 	private ConcurrentHashMap<String, ConcurrentLinkedDeque<Message>> queues;
-	private ConcurrentHashMap<String, ConcurrentHashMap<String, Message>> msgIdToSuppressedMsg;
+	private ConcurrentHashMap<String, ConcurrentHashMap<String, Message>> msgIdToSuppressedMsgQueue;
 	private ConcurrentHashMap<String, ScheduledFuture<?>> msgIdToschedulerMap;
 
 	private String qUrlBase = "https://sqs.amazonaws.com/373529781950/";
@@ -26,9 +25,9 @@ public class InMemoryQueueServiceTest {
 	@Before
 	public void before() {
 		queues = new ConcurrentHashMap<>();
-		msgIdToSuppressedMsg = new ConcurrentHashMap<>();
+		msgIdToSuppressedMsgQueue = new ConcurrentHashMap<>();
 		msgIdToschedulerMap = new ConcurrentHashMap<>();
-		queueService = new InMemoryQueueService(queues, msgIdToSuppressedMsg,
+		queueService = new InMemoryQueueService(queues, msgIdToSuppressedMsgQueue,
 				msgIdToschedulerMap, Executors.newScheduledThreadPool(5));
 	}
 
@@ -45,7 +44,7 @@ public class InMemoryQueueServiceTest {
 		String inputMessageBody = "Message Body";
 		queueService.push(qUrlBase + qName, inputMessageBody);
 		assertThat(queues.get(qName), is(notNullValue()));
-		assertThat(queues.get(qName).poll(), equalTo(inputMessageBody));
+		assertThat(queues.get(qName).poll().getBody(), equalTo(inputMessageBody));
 	}
 
 	@Test(expected = IllegalArgumentException.class)
@@ -108,7 +107,7 @@ public class InMemoryQueueServiceTest {
 	}
 
 	@Test
-	public void pull_shouldRemoveTheMessageFromQueueAndMarkItSuppressed() {
+	public void pull_shouldMoveTheMessageFromQueueToSuppressed() {
 		String qName = "Test-Queue";
 		String inputBody = "Message Body 1";
 		queueService.push(qUrlBase + qName, inputBody);
@@ -116,7 +115,7 @@ public class InMemoryQueueServiceTest {
 		Optional<Message> message = queueService.pull(qUrlBase + qName);
 
 		assertThat(queues.get(qName).isEmpty(), is(true));
-		assertThat(msgIdToSuppressedMsg.get(qName).get(message.get().getReceiptHandle()), notNullValue());
+		assertThat(msgIdToSuppressedMsgQueue.get(qName).get(message.get().getMessageId()), notNullValue());
 	}
 
 	@Test
@@ -126,22 +125,22 @@ public class InMemoryQueueServiceTest {
 		queueService.push(qUrlBase + qName, inputBody);
 
 		Optional<Message> message = queueService.pull(qUrlBase + qName);
-		assertThat(msgIdToschedulerMap.get(message.get().getReceiptHandle()), notNullValue());
+		assertThat(msgIdToschedulerMap.get(message.get().getMessageId()), notNullValue());
 	}
 
 	@Test
-	public void delete_shouldRemoveMessageFromSuppressedListAndCancelFutureTask() {
+	public void delete_shouldRemoveMessageFromSuppressedListAndCancelScheduleTask() {
 		String qName = "Test-Queue";
 		String inputBody = "Message Body 1";
 		queueService.push(qUrlBase + qName, inputBody);
-
 		Optional<Message> message = queueService.pull(qUrlBase + qName);
-		ScheduledFuture future = msgIdToschedulerMap.get(message.get().getReceiptHandle());
+		ScheduledFuture future = msgIdToschedulerMap.get(message.get().getMessageId());
+
 		queueService.delete(qUrlBase + qName, message.get().getReceiptHandle());
 
 		assertThat(queues.get(qName).isEmpty(), is(true));
-		assertThat(msgIdToSuppressedMsg.get(qName).isEmpty(), is(true));
-		assertThat(msgIdToschedulerMap.get(message.get().getReceiptHandle()), nullValue());
+		assertThat(msgIdToSuppressedMsgQueue.get(qName).isEmpty(), is(true));
+		assertThat(msgIdToschedulerMap.get(message.get().getMessageId()), nullValue());
 		assertThat(future.isCancelled(), is(true));
 	}
 

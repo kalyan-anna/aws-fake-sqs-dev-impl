@@ -18,7 +18,7 @@ public class InMemoryQueueService implements QueueService {
 	private static int VISIBILITY_TIMEOUT_SEC = 30;
 
 	private ConcurrentHashMap<String, ConcurrentLinkedDeque<Message>> queues;
-	private ConcurrentHashMap<String, ConcurrentHashMap<String, Message>> msgIdToSuppressedMsg;
+	private ConcurrentHashMap<String, ConcurrentHashMap<String, Message>> msgIdToSuppressedMsgQueue;
 	private ConcurrentHashMap<String, String> handlerToMsgIdMap;
 	private ConcurrentHashMap<String, ScheduledFuture<?>> msgIdToschedulerMap;
 
@@ -30,11 +30,11 @@ public class InMemoryQueueService implements QueueService {
 	}
 
 	InMemoryQueueService(ConcurrentHashMap<String, ConcurrentLinkedDeque<Message>> queues,
-			ConcurrentHashMap<String, ConcurrentHashMap<String, Message>> msgIdToSuppressedMsg,
+			ConcurrentHashMap<String, ConcurrentHashMap<String, Message>> msgIdToSuppressedMsgQueue,
 			ConcurrentHashMap<String, ScheduledFuture<?>> msgIdToschedulerMap,
 			ScheduledExecutorService executorService) {
 		this.queues = queues;
-		this.msgIdToSuppressedMsg = msgIdToSuppressedMsg;
+		this.msgIdToSuppressedMsgQueue = msgIdToSuppressedMsgQueue;
 		this.executorService = executorService;
 		this.msgIdToschedulerMap = msgIdToschedulerMap;
 		this.handlerToMsgIdMap = new ConcurrentHashMap<>();
@@ -69,25 +69,24 @@ public class InMemoryQueueService implements QueueService {
 		Message message = queues.get(qName).poll();
 		String receiptHandle = "RH-" + UUID.randomUUID().toString();
 		message.setReceiptHandle(receiptHandle);
-		suppressMessage(message.getMessageId(), message);
+		suppressMessage(qName, message);
 		handlerToMsgIdMap.put(message.getReceiptHandle(), message.getMessageId());
 
 		ScheduledFuture future = executorService.schedule(() -> {
-			Message suppressedMessage = msgIdToSuppressedMsg.get(message.getMessageId()).get(message.getReceiptHandle());
-			msgIdToSuppressedMsg.remove(message.getMessageId());
+			msgIdToSuppressedMsgQueue.get(qName).remove(message.getMessageId());
 			queues.get(qName).addFirst(message);
-			msgIdToschedulerMap.remove(message.getReceiptHandle());
+			msgIdToschedulerMap.remove(message.getMessageId());
 		}, VISIBILITY_TIMEOUT_SEC, TimeUnit.SECONDS);
-		msgIdToschedulerMap.put(message.getReceiptHandle(), future);
+		msgIdToschedulerMap.put(message.getMessageId(), future);
 
 		return Optional.of(message);
 	}
 
 	private void suppressMessage(String qName, Message message) {
-		if(msgIdToSuppressedMsg.get(qName) == null) {
-			msgIdToSuppressedMsg.put(qName, new ConcurrentHashMap<>());
+		if(msgIdToSuppressedMsgQueue.get(qName) == null) {
+			msgIdToSuppressedMsgQueue.put(qName, new ConcurrentHashMap<>());
 		}
-		msgIdToSuppressedMsg.get(qName).put(message.getMessageId(), message);
+		msgIdToSuppressedMsgQueue.get(qName).put(message.getMessageId(), message);
 	}
 
 	@Override
@@ -99,8 +98,8 @@ public class InMemoryQueueService implements QueueService {
 
 		String messageId = handlerToMsgIdMap.get(receiptHandler);
 		msgIdToschedulerMap.get(messageId).cancel(false);
-		msgIdToschedulerMap.remove(receiptHandler);
-		msgIdToSuppressedMsg.get(qName).remove(messageId);
+		msgIdToschedulerMap.remove(messageId);
+		msgIdToSuppressedMsgQueue.get(qName).remove(messageId);
 	}
 
 	private String fromQueueUrl(String queueUrl) {

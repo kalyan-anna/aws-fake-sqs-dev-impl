@@ -6,9 +6,9 @@ import java.util.Optional;
 
 public interface QueueService {
 
-	void push(String qName, String messageBody);
+	void push(String queueUrl, String messageBody);
 
-	Optional<CanvaMessage> pull(String qName);
+	Optional<CanvaMessage> pull(String queueUrl);
 
-	void delete(String qName, String receiptHandler);
+	void delete(String queueUrl, String receiptHandler);
 }

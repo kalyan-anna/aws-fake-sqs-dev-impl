@@ -5,18 +5,19 @@ import com.example.model.CanvaMessage;
 import java.util.Optional;
 
 public class InMemoryQueueService implements QueueService {
+
 	@Override
-	public void push(String qName, String messageBody) {
+	public void push(String queueUrl, String messageBody) {
 
 	}
 
 	@Override
-	public Optional<CanvaMessage> pull(String qName) {
+	public Optional<CanvaMessage> pull(String queueUrl) {
 		return null;
 	}
 
 	@Override
-	public void delete(String qName, String receiptHandler) {
+	public void delete(String queueUrl, String receiptHandler) {
 
 	}
 }

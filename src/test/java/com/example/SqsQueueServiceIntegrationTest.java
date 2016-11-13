@@ -74,16 +74,13 @@ public class SqsQueueServiceIntegrationTest {
 
 	@Test
 	public void delete_shouldDeleteMessageFromQueue() throws Exception {
-		String qName = "IT-test-3-queue";
-		qUrl = SQS.createQueue(qName).getQueueUrl();
+		qUrl = SQS.createQueue("IT-test-3-queue").getQueueUrl();
 		List<Message> initialMessages = SQS.receiveMessage(qUrl).getMessages();
 		assertThat("initialMessageSize", initialMessages.size(), is(0));
-
 		SQS.sendMessage(new SendMessageRequest(qUrl, "Message Body"));
-		queueService.push(qName, "Message body");
 
-		CanvaMessage message = queueService.pull(qName).get();
-		queueService.delete(qName, message.getReceiptHandle());
+		CanvaMessage message = queueService.pull(qUrl).get();
+		queueService.delete(qUrl, message.getReceiptHandle());
 
 		List<Message> messages = SQS.receiveMessage(qUrl).getMessages();
 		assertThat(messages.size(), is(0));

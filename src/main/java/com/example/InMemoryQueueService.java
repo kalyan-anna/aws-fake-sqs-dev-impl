@@ -15,7 +15,7 @@ import java.util.concurrent.TimeUnit;
 
 public class InMemoryQueueService implements QueueService {
 
-	private static int VISIBILITY_TIMEOUT_SEC = 5;
+	private static int VISIBILITY_TIMEOUT_SEC = 30;
 
 	private ConcurrentHashMap<String, ConcurrentLinkedDeque<String>> queues;
 	private ConcurrentHashMap<String, ConcurrentHashMap<String, Message>> suppressedMessages;
@@ -63,20 +63,20 @@ public class InMemoryQueueService implements QueueService {
 		String body = queues.get(qName).poll();
 		String uniqueId = UUID.randomUUID().toString();
 		Message message = new Message().withMessageId(uniqueId).withBody(body).withReceiptHandle("RH-" + uniqueId);
-		markMessageAsSuppressed(qName, message);
+		suppressMessage(qName, message);
 
 		ScheduledFuture future = executorService.schedule(() -> {
 			Message suppressedMessage = suppressedMessages.get(qName).get(message.getReceiptHandle());
-			suppressedMessages.get(qName).remove(message.getReceiptHandle());
 			queues.get(qName).addFirst(suppressedMessage.getBody());
+			suppressedMessages.get(qName).remove(message.getReceiptHandle());
 			handlerToscheduledTasksMap.remove(message.getReceiptHandle());
 		}, VISIBILITY_TIMEOUT_SEC, TimeUnit.SECONDS);
-
 		handlerToscheduledTasksMap.put(message.getReceiptHandle(), future);
+
 		return Optional.of(message);
 	}
 
-	private void markMessageAsSuppressed(String qName, Message message) {
+	private void suppressMessage(String qName, Message message) {
 		if(suppressedMessages.get(qName) == null) {
 			suppressedMessages.put(qName, new ConcurrentHashMap<>());
 		}
@@ -90,9 +90,11 @@ public class InMemoryQueueService implements QueueService {
 		}
 		String qName = fromQueueUrl(qUrl);
 
-		suppressedMessages.get(qName).remove(receiptHandler);
-		handlerToscheduledTasksMap.get(receiptHandler).cancel(true);
-		handlerToscheduledTasksMap.remove(receiptHandler);
+		boolean success = handlerToscheduledTasksMap.get(receiptHandler).cancel(false);
+		if(success) {
+			suppressedMessages.get(qName).remove(receiptHandler);
+			handlerToscheduledTasksMap.remove(receiptHandler);
+		}
 	}
 
 	private String fromQueueUrl(String queueUrl) {

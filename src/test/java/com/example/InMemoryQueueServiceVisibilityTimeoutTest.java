@@ -9,10 +9,8 @@ import java.util.Arrays;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ScheduledFuture;
 
-import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.*;
 import static org.junit.Assert.assertThat;
 
@@ -55,12 +53,12 @@ public class InMemoryQueueServiceVisibilityTimeoutTest {
 				new ConcurrentLinkedDeque<String>(Arrays.asList(firstMessage, secondMessage, thirdMessage));
 		queues.put(qName, testQueue);
 
-		Optional<Message> message1 = queueService.pull(qUrlBase + qName);
-		Optional<Message> message2 = queueService.pull(qUrlBase + qName);
-		Optional<Message> message3 = queueService.pull(qUrlBase + qName);
+		queueService.pull(qUrlBase + qName);
+		queueService.pull(qUrlBase + qName);
+		queueService.pull(qUrlBase + qName);
 
-		assertThat(testQueue.poll(), equalTo(firstMessage));
-		assertThat(testQueue.poll(), equalTo(secondMessage));
-		assertThat(testQueue.poll(), equalTo(thirdMessage));
+		assertThat(queues.get(qName).poll(), equalTo(firstMessage));
+		assertThat(queues.get(qName).poll(), equalTo(secondMessage));
+		assertThat(queues.get(qName).poll(), equalTo(thirdMessage));
 	}
 }

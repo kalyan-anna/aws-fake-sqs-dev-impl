@@ -6,9 +6,9 @@ import java.util.Optional;
 
 public interface QueueService {
 
-	void push(String queueUrl, String messageBody);
+	void push(String qUrl, String messageBody);
 
-	Optional<Message> pull(String queueUrl);
+	Optional<Message> pull(String qUrl);
 
-	void delete(String queueUrl, String receiptHandler);
+	void delete(String qUrl, String receiptHandler);
 }

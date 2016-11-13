@@ -4,20 +4,20 @@ import com.amazonaws.services.sqs.model.Message;
 
 import java.util.Optional;
 
-class FileQueueService implements QueueService {
+public class FileQueueService implements QueueService {
 
 	@Override
-	public void push(String queueUrl, String messageBody) {
+	public void push(String qUrl, String messageBody) {
 
 	}
 
 	@Override
-	public Optional<Message> pull(String queueUrl) {
+	public Optional<Message> pull(String qUrl) {
 		return null;
 	}
 
 	@Override
-	public void delete(String queueUrl, String receiptHandler) {
+	public void delete(String qUrl, String receiptHandler) {
 
 	}
 

@@ -1,6 +1,6 @@
 package com.example;
 
-public class FileQueueTest {
+public class FileQueueServiceTest {
   //
   // Implement me if you have time.
   //

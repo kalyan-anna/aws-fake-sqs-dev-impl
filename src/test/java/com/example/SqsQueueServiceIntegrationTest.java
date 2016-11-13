@@ -1,5 +1,8 @@
 package com.example;
 
+import com.amazonaws.AmazonClientException;
+import com.amazonaws.auth.AWSCredentials;
+import com.amazonaws.auth.profile.ProfileCredentialsProvider;
 import com.amazonaws.services.sqs.AmazonSQSClient;
 import com.amazonaws.services.sqs.model.Message;
 import org.junit.After;
@@ -11,7 +14,6 @@ import org.junit.Test;
 import java.util.List;
 import java.util.Optional;
 
-import static com.example.SqsUtil.*;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertThat;
@@ -28,7 +30,17 @@ public class SqsQueueServiceIntegrationTest {
 
 	@BeforeClass
 	public static void beforeClass() {
-		SQS = createSQS();
+		AWSCredentials credentials = null;
+		try {
+			credentials = new ProfileCredentialsProvider().getCredentials();
+		} catch (Exception e) {
+			throw new AmazonClientException(
+					"Cannot load the credentials from the credential profiles file. " +
+							"Please make sure that your credentials file is at the correct " +
+							"location (~/.aws/credentials), and is in valid format.",
+					e);
+		}
+		SQS = new AmazonSQSClient(credentials);
 	}
 
 	@Before

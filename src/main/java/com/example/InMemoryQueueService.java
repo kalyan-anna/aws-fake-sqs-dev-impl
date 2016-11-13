@@ -4,7 +4,7 @@ import com.amazonaws.services.sqs.model.Message;
 
 import java.util.Optional;
 
-public class InMemoryQueueService implements QueueService {
+class InMemoryQueueService implements QueueService {
 
 	@Override
 	public void push(String queueUrl, String messageBody) {

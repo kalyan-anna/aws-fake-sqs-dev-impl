@@ -4,7 +4,8 @@ import com.amazonaws.services.sqs.model.Message;
 
 import java.util.Optional;
 
-public class FileQueueService implements QueueService {
+class FileQueueService implements QueueService {
+
 	@Override
 	public void push(String queueUrl, String messageBody) {
 

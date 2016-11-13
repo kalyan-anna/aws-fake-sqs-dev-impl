@@ -1,0 +1,91 @@
+package com.example;
+
+import com.amazonaws.services.sqs.AmazonSQSClient;
+import com.amazonaws.services.sqs.model.Message;
+import com.amazonaws.services.sqs.model.SendMessageRequest;
+import com.example.model.CanvaMessage;
+import org.junit.After;
+import org.junit.Before;
+import org.junit.BeforeClass;
+import org.junit.Ignore;
+import org.junit.Test;
+
+import java.util.List;
+import java.util.Optional;
+
+import static com.example.SqsUtil.*;
+import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.is;
+import static org.junit.Assert.assertThat;
+
+/*
+This integration tests can be turned on if it is a separate project on its own
+ */
+@Ignore
+public class SqsQueueServiceIntegrationTest {
+
+	private static AmazonSQSClient SQS;
+	private SqsQueueService queueService;
+	private String qUrl;
+
+	@BeforeClass
+	public static void beforeClass() {
+		SQS = createSQS();
+	}
+
+	@Before
+	public void before() {
+		queueService = new SqsQueueService(SQS);
+	}
+
+	@After
+	public void after() {
+		if(qUrl != null) {
+			System.out.println("deleteing qUrl " + qUrl);
+			SQS.deleteQueue(qUrl);
+		}
+	}
+
+	@Test
+	public void push_shouldSendMessageToQueue() {
+		String qName = "IT-test-1-queue";
+		String message = "Dummy Message";
+		qUrl = SQS.createQueue(qName).getQueueUrl();
+
+		queueService.push(qName, message);
+
+		Optional<Message> messageInQueue = SQS.receiveMessage(qUrl).getMessages().stream().findFirst();
+		assertThat(messageInQueue.isPresent(), is(true));
+		assertThat(messageInQueue.get().getBody(), equalTo(message));
+	}
+
+	@Test
+	public void pull_shouldReceiveMessageFromQueue() {
+		String qName = "IT-test-2-queue";
+		String expectedBody = "Dummy Message body";
+		qUrl = SQS.createQueue(qName).getQueueUrl();
+		queueService.push(qName, expectedBody);
+
+		Optional<CanvaMessage> message = queueService.pull(qName);
+
+		assertThat(message.isPresent(), is(true));
+		assertThat(message.get().getBody(), equalTo(expectedBody));
+	}
+
+	@Test
+	public void delete_shouldDeleteMessageFromQueue() throws Exception {
+		String qName = "IT-test-3-queue";
+		qUrl = SQS.createQueue(qName).getQueueUrl();
+		List<Message> initialMessages = SQS.receiveMessage(qUrl).getMessages();
+		assertThat("initialMessageSize", initialMessages.size(), is(0));
+
+		SQS.sendMessage(new SendMessageRequest(qUrl, "Message Body"));
+		queueService.push(qName, "Message body");
+
+		CanvaMessage message = queueService.pull(qName).get();
+		queueService.delete(qName, message.getReceiptHandle());
+
+		List<Message> messages = SQS.receiveMessage(qUrl).getMessages();
+		assertThat(messages.size(), is(0));
+	}
+}

@@ -1,6 +1,7 @@
 package com.example;
 
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import java.util.concurrent.ExecutorService;
@@ -28,6 +29,7 @@ public class FileQueueServiceTest {
 		queueService.push(qUrlBase + "qName", null);
 	}
 
+	@Ignore
 	@Test
 	public void push_shouldSetUpQueueDirectoryIfDoesNotExists() {
 		queueService.push(qUrlBase + "test-queue", "test message");
@@ -38,6 +40,7 @@ public class FileQueueServiceTest {
 		queueService.push(qUrlBase + "test-queue", "test message5");
 	}
 
+	@Ignore
 	@Test
 	public void push_test() throws InterruptedException {
 		Runnable task = () -> queueService.push(qUrlBase + "qUrl", "test message");

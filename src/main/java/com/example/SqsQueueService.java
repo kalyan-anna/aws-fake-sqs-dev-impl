@@ -2,7 +2,7 @@ package com.example;
 
 import com.amazonaws.services.sqs.AmazonSQSClient;
 import com.amazonaws.services.sqs.model.Message;
-import com.example.model.CanvaMessage;
+
 import static org.apache.commons.lang.StringUtils.*;
 
 import java.util.List;
@@ -26,13 +26,12 @@ public class SqsQueueService implements QueueService {
   }
 
   @Override
-  public Optional<CanvaMessage> pull(String queueUrl) {
+  public Optional<Message> pull(String queueUrl) {
     if(isBlank(queueUrl)) {
       throw new IllegalArgumentException("Invalid qName");
     }
 
-    List<Message> messages = sqs.receiveMessage(queueUrl).getMessages();
-    return messages.stream().findFirst().map(msg -> new CanvaMessage(msg.getMessageId(), msg.getReceiptHandle(), msg.getBody()));
+    return sqs.receiveMessage(queueUrl).getMessages().stream().findFirst();
   }
 
   @Override

@@ -5,7 +5,6 @@ import com.amazonaws.services.sqs.model.CreateQueueResult;
 import com.amazonaws.services.sqs.model.ListQueuesResult;
 import com.amazonaws.services.sqs.model.Message;
 import com.amazonaws.services.sqs.model.ReceiveMessageResult;
-import com.example.model.CanvaMessage;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -65,7 +64,7 @@ public class SqsQueueServiceTest {
 		when(sqs.listQueues(anyString())).thenReturn(new ListQueuesResult().withQueueUrls("qUrl"));
 		when(sqs.receiveMessage(anyString())).thenReturn(new ReceiveMessageResult().withMessages(Collections.emptyList()));
 
-		Optional<CanvaMessage> message = queueService.pull("qUrl");
+		Optional<Message> message = queueService.pull("qUrl");
 
 		assertThat(message.isPresent(), is(false));
 	}

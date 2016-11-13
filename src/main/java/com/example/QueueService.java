@@ -1,6 +1,6 @@
 package com.example;
 
-import com.example.model.CanvaMessage;
+import com.amazonaws.services.sqs.model.Message;
 
 import java.util.Optional;
 
@@ -8,7 +8,7 @@ public interface QueueService {
 
 	void push(String queueUrl, String messageBody);
 
-	Optional<CanvaMessage> pull(String queueUrl);
+	Optional<Message> pull(String queueUrl);
 
 	void delete(String queueUrl, String receiptHandler);
 }

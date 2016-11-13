@@ -2,8 +2,6 @@ package com.example;
 
 import com.amazonaws.services.sqs.AmazonSQSClient;
 import com.amazonaws.services.sqs.model.Message;
-import com.amazonaws.services.sqs.model.SendMessageRequest;
-import com.example.model.CanvaMessage;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.BeforeClass;
@@ -66,7 +64,7 @@ public class SqsQueueServiceIntegrationTest {
 		qUrl = SQS.createQueue(qName).getQueueUrl();
 		queueService.push(qName, expectedBody);
 
-		Optional<CanvaMessage> message = queueService.pull(qName);
+		Optional<Message> message = queueService.pull(qName);
 
 		assertThat(message.isPresent(), is(true));
 		assertThat(message.get().getBody(), equalTo(expectedBody));
@@ -74,12 +72,10 @@ public class SqsQueueServiceIntegrationTest {
 
 	@Test
 	public void delete_shouldDeleteMessageFromQueue() throws Exception {
-		qUrl = SQS.createQueue("IT-test-3-queue").getQueueUrl();
-		List<Message> initialMessages = SQS.receiveMessage(qUrl).getMessages();
-		assertThat("initialMessageSize", initialMessages.size(), is(0));
-		SQS.sendMessage(new SendMessageRequest(qUrl, "Message Body"));
+		qUrl = SQS.createQueue("IT-test-3-queue--7").getQueueUrl();
+		SQS.sendMessage(qUrl, "Message Body");
 
-		CanvaMessage message = queueService.pull(qUrl).get();
+		Message message = queueService.pull(qUrl).get();
 		queueService.delete(qUrl, message.getReceiptHandle());
 
 		List<Message> messages = SQS.receiveMessage(qUrl).getMessages();

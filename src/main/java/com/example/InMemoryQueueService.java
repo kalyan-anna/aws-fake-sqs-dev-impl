@@ -1,6 +1,6 @@
 package com.example;
 
-import com.example.model.CanvaMessage;
+import com.amazonaws.services.sqs.model.Message;
 
 import java.util.Optional;
 
@@ -12,7 +12,7 @@ public class InMemoryQueueService implements QueueService {
 	}
 
 	@Override
-	public Optional<CanvaMessage> pull(String queueUrl) {
+	public Optional<Message> pull(String queueUrl) {
 		return null;
 	}
 

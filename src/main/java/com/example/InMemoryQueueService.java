@@ -90,11 +90,9 @@ public class InMemoryQueueService implements QueueService {
 		}
 		String qName = fromQueueUrl(qUrl);
 
-		boolean success = handlerToscheduledTasksMap.get(receiptHandler).cancel(false);
-		if(success) {
-			suppressedMessages.get(qName).remove(receiptHandler);
-			handlerToscheduledTasksMap.remove(receiptHandler);
-		}
+		handlerToscheduledTasksMap.get(receiptHandler).cancel(false);
+		suppressedMessages.get(qName).remove(receiptHandler);
+		handlerToscheduledTasksMap.remove(receiptHandler);
 	}
 
 	private String fromQueueUrl(String queueUrl) {

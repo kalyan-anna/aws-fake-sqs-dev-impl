@@ -17,19 +17,19 @@ import static org.junit.Assert.assertThat;
 public class InMemoryQueueServiceTest {
 
 	private QueueService queueService;
-	private ConcurrentHashMap<String, ConcurrentLinkedDeque<String>> queues;
-	private ConcurrentHashMap<String, ConcurrentHashMap<String, Message>> suppressedMessages;
-	private ConcurrentHashMap<String, ScheduledFuture<?>> handlerToscheduledTasksMap;
+	private ConcurrentHashMap<String, ConcurrentLinkedDeque<Message>> queues;
+	private ConcurrentHashMap<String, ConcurrentHashMap<String, Message>> msgIdToSuppressedMsg;
+	private ConcurrentHashMap<String, ScheduledFuture<?>> msgIdToschedulerMap;
 
 	private String qUrlBase = "https://sqs.amazonaws.com/373529781950/";
 
 	@Before
 	public void before() {
 		queues = new ConcurrentHashMap<>();
-		suppressedMessages = new ConcurrentHashMap<>();
-		handlerToscheduledTasksMap = new ConcurrentHashMap<>();
-		queueService = new InMemoryQueueService(queues, suppressedMessages,
-										handlerToscheduledTasksMap, Executors.newScheduledThreadPool(5));
+		msgIdToSuppressedMsg = new ConcurrentHashMap<>();
+		msgIdToschedulerMap = new ConcurrentHashMap<>();
+		queueService = new InMemoryQueueService(queues, msgIdToSuppressedMsg,
+				msgIdToschedulerMap, Executors.newScheduledThreadPool(5));
 	}
 
 	@Test
@@ -64,9 +64,9 @@ public class InMemoryQueueServiceTest {
 		String firstMessage = "Message Body 1";
 		String secondMessage = "Message Body 2";
 		String thirdMessage = "Message Body 3";
-		ConcurrentLinkedDeque<String> testQueue =
-						new ConcurrentLinkedDeque<String>(Arrays.asList(firstMessage, secondMessage, thirdMessage));
-		queues.put(qName, testQueue);
+		queueService.push(qUrlBase + qName, firstMessage);
+		queueService.push(qUrlBase + qName, secondMessage);
+		queueService.push(qUrlBase + qName, thirdMessage);
 
 		Optional<Message> message = queueService.pull(qUrlBase + qName);
 		assertThat(message.isPresent(), is(true));
@@ -97,8 +97,7 @@ public class InMemoryQueueServiceTest {
 	public void pull_shouldReturnValidMessageIdBodyAndReceiptHandler() {
 		String qName = "Test-Queue";
 		String inputBody = "Message Body 1";
-		ConcurrentLinkedDeque<String> testQueue = new ConcurrentLinkedDeque<String>(Arrays.asList(inputBody));
-		queues.put(qName, testQueue);
+		queueService.push(qUrlBase + qName, inputBody);
 
 		Optional<Message> message = queueService.pull(qUrlBase + qName);
 
@@ -112,40 +111,37 @@ public class InMemoryQueueServiceTest {
 	public void pull_shouldRemoveTheMessageFromQueueAndMarkItSuppressed() {
 		String qName = "Test-Queue";
 		String inputBody = "Message Body 1";
-		ConcurrentLinkedDeque<String> testQueue = new ConcurrentLinkedDeque<String>(Arrays.asList(inputBody));
-		queues.put(qName, testQueue);
+		queueService.push(qUrlBase + qName, inputBody);
 
 		Optional<Message> message = queueService.pull(qUrlBase + qName);
 
 		assertThat(queues.get(qName).isEmpty(), is(true));
-		assertThat(suppressedMessages.get(qName).get(message.get().getReceiptHandle()), notNullValue());
+		assertThat(msgIdToSuppressedMsg.get(qName).get(message.get().getReceiptHandle()), notNullValue());
 	}
 
 	@Test
 	public void pull_shouldScheduleVisibilityTimeoutTasks() {
 		String qName = "Test-Queue";
 		String inputBody = "Message Body 1";
-		ConcurrentLinkedDeque<String> testQueue = new ConcurrentLinkedDeque<String>(Arrays.asList(inputBody));
-		queues.put(qName, testQueue);
+		queueService.push(qUrlBase + qName, inputBody);
 
 		Optional<Message> message = queueService.pull(qUrlBase + qName);
-		assertThat(handlerToscheduledTasksMap.get(message.get().getReceiptHandle()), notNullValue());
+		assertThat(msgIdToschedulerMap.get(message.get().getReceiptHandle()), notNullValue());
 	}
 
 	@Test
 	public void delete_shouldRemoveMessageFromSuppressedListAndCancelFutureTask() {
 		String qName = "Test-Queue";
 		String inputBody = "Message Body 1";
-		ConcurrentLinkedDeque<String> testQueue = new ConcurrentLinkedDeque<String>(Arrays.asList(inputBody));
-		queues.put(qName, testQueue);
+		queueService.push(qUrlBase + qName, inputBody);
 
 		Optional<Message> message = queueService.pull(qUrlBase + qName);
-		ScheduledFuture future = handlerToscheduledTasksMap.get(message.get().getReceiptHandle());
+		ScheduledFuture future = msgIdToschedulerMap.get(message.get().getReceiptHandle());
 		queueService.delete(qUrlBase + qName, message.get().getReceiptHandle());
 
 		assertThat(queues.get(qName).isEmpty(), is(true));
-		assertThat(suppressedMessages.get(qName).isEmpty(), is(true));
-		assertThat(handlerToscheduledTasksMap.get(message.get().getReceiptHandle()), nullValue());
+		assertThat(msgIdToSuppressedMsg.get(qName).isEmpty(), is(true));
+		assertThat(msgIdToschedulerMap.get(message.get().getReceiptHandle()), nullValue());
 		assertThat(future.isCancelled(), is(true));
 	}
 

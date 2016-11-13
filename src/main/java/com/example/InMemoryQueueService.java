@@ -17,29 +17,32 @@ public class InMemoryQueueService implements QueueService {
 
 	private static int VISIBILITY_TIMEOUT_SEC = 30;
 
-	private ConcurrentHashMap<String, ConcurrentLinkedDeque<String>> queues;
-	private ConcurrentHashMap<String, ConcurrentHashMap<String, Message>> suppressedMessages;
-	private ConcurrentHashMap<String, ScheduledFuture<?>> handlerToscheduledTasksMap;
+	private ConcurrentHashMap<String, ConcurrentLinkedDeque<Message>> queues;
+	private ConcurrentHashMap<String, ConcurrentHashMap<String, Message>> msgIdToSuppressedMsg;
+	private ConcurrentHashMap<String, String> handlerToMsgIdMap;
+	private ConcurrentHashMap<String, ScheduledFuture<?>> msgIdToschedulerMap;
 
 	private ScheduledExecutorService executorService;
 
 	public InMemoryQueueService() {
-		this(new ConcurrentHashMap<>(), new ConcurrentHashMap<>(), new ConcurrentHashMap<>(), Executors.newScheduledThreadPool(5));
+		this(new ConcurrentHashMap<>(), new ConcurrentHashMap<>(),
+						new ConcurrentHashMap<>(), Executors.newScheduledThreadPool(5));
 	}
 
-	InMemoryQueueService(ConcurrentHashMap<String, ConcurrentLinkedDeque<String>> queues,
-			ConcurrentHashMap<String, ConcurrentHashMap<String, Message>> suppressedMessages,
-			ConcurrentHashMap<String, ScheduledFuture<?>> handlerToscheduledTasksMap,
+	InMemoryQueueService(ConcurrentHashMap<String, ConcurrentLinkedDeque<Message>> queues,
+			ConcurrentHashMap<String, ConcurrentHashMap<String, Message>> msgIdToSuppressedMsg,
+			ConcurrentHashMap<String, ScheduledFuture<?>> msgIdToschedulerMap,
 			ScheduledExecutorService executorService) {
 		this.queues = queues;
-		this.suppressedMessages = suppressedMessages;
+		this.msgIdToSuppressedMsg = msgIdToSuppressedMsg;
 		this.executorService = executorService;
-		this.handlerToscheduledTasksMap = handlerToscheduledTasksMap;
+		this.msgIdToschedulerMap = msgIdToschedulerMap;
+		this.handlerToMsgIdMap = new ConcurrentHashMap<>();
 	}
 
 	@Override
-	public void push(String qUrl, String messageBody) {
-		if(isBlank(qUrl) || isBlank(messageBody)) {
+	public void push(String qUrl, String body) {
+		if(isBlank(qUrl) || isBlank(body)) {
 			throw new IllegalArgumentException("Invalid qName or messageBody");
 		}
 		String qName = fromQueueUrl(qUrl);
@@ -47,7 +50,10 @@ public class InMemoryQueueService implements QueueService {
 		if(queues.get(qName) == null) {
 			queues.put(qName, new ConcurrentLinkedDeque<>());
 		}
-		queues.get(qName).add(messageBody);
+		Message newMessage = new Message()
+								.withMessageId(UUID.randomUUID().toString())
+								.withBody(body);
+		queues.get(qName).add(newMessage);
 	}
 
 	@Override
@@ -60,27 +66,28 @@ public class InMemoryQueueService implements QueueService {
 			return Optional.empty();
 		}
 
-		String body = queues.get(qName).poll();
-		String uniqueId = UUID.randomUUID().toString();
-		Message message = new Message().withMessageId(uniqueId).withBody(body).withReceiptHandle("RH-" + uniqueId);
-		suppressMessage(qName, message);
+		Message message = queues.get(qName).poll();
+		String receiptHandle = "RH-" + UUID.randomUUID().toString();
+		message.setReceiptHandle(receiptHandle);
+		suppressMessage(message.getMessageId(), message);
+		handlerToMsgIdMap.put(message.getReceiptHandle(), message.getMessageId());
 
 		ScheduledFuture future = executorService.schedule(() -> {
-			Message suppressedMessage = suppressedMessages.get(qName).get(message.getReceiptHandle());
-			queues.get(qName).addFirst(suppressedMessage.getBody());
-			suppressedMessages.get(qName).remove(message.getReceiptHandle());
-			handlerToscheduledTasksMap.remove(message.getReceiptHandle());
+			Message suppressedMessage = msgIdToSuppressedMsg.get(message.getMessageId()).get(message.getReceiptHandle());
+			msgIdToSuppressedMsg.remove(message.getMessageId());
+			queues.get(qName).addFirst(message);
+			msgIdToschedulerMap.remove(message.getReceiptHandle());
 		}, VISIBILITY_TIMEOUT_SEC, TimeUnit.SECONDS);
-		handlerToscheduledTasksMap.put(message.getReceiptHandle(), future);
+		msgIdToschedulerMap.put(message.getReceiptHandle(), future);
 
 		return Optional.of(message);
 	}
 
 	private void suppressMessage(String qName, Message message) {
-		if(suppressedMessages.get(qName) == null) {
-			suppressedMessages.put(qName, new ConcurrentHashMap<>());
+		if(msgIdToSuppressedMsg.get(qName) == null) {
+			msgIdToSuppressedMsg.put(qName, new ConcurrentHashMap<>());
 		}
-		suppressedMessages.get(qName).put(message.getReceiptHandle(), message);
+		msgIdToSuppressedMsg.get(qName).put(message.getMessageId(), message);
 	}
 
 	@Override
@@ -90,9 +97,10 @@ public class InMemoryQueueService implements QueueService {
 		}
 		String qName = fromQueueUrl(qUrl);
 
-		handlerToscheduledTasksMap.get(receiptHandler).cancel(false);
-		suppressedMessages.get(qName).remove(receiptHandler);
-		handlerToscheduledTasksMap.remove(receiptHandler);
+		String messageId = handlerToMsgIdMap.get(receiptHandler);
+		msgIdToschedulerMap.get(messageId).cancel(false);
+		msgIdToschedulerMap.remove(receiptHandler);
+		msgIdToSuppressedMsg.get(qName).remove(messageId);
 	}
 
 	private String fromQueueUrl(String queueUrl) {

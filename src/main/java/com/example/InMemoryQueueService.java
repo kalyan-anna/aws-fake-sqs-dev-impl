@@ -15,13 +15,31 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * Each queue maintains 3 stores of concurrent HashMap where queueName is the parent-key for all of them
+ *		- messageStore holds the incoming messages
+ *		- invisibleMessageStore holds the messages that are pulled and waiting to be deleted
+ *	    - scheduledTaskStore holds the visibility timeout scheduled tasks
+ *
+ * Push
+ * When a message is pushed a unique messageId is generated and the message is added to messageStore
+ *
+ * Pull
+ * The first message in the queue is pulled and added to invisibleMessageStore. invisibleMessageStore uses queueName as parent-key
+ * and messageId as key for quick retrieval.
+ * A unique receiptHandler is generated for each pulled message and a scheduled task is submitted to check for visibility timeout.
+ *
+ * Delete
+ * When a delete request is received, the message is removed from invisibleMessageStore and scheduled task for visibility timeout
+ * is cancelled.
+ */
 class InMemoryQueueService implements QueueService {
 
 	private static final int VISIBILITY_TIMEOUT_SEC = 30;
 
-	private ConcurrentHashMap<String, ConcurrentLinkedDeque<Message>> queues;
-	private ConcurrentHashMap<String, ConcurrentHashMap<String, Message>> msgIdToSuppressedMsgQueue;
-	private ConcurrentHashMap<String, ScheduledFuture<?>> msgIdToSchedulerMap;
+	private ConcurrentHashMap<String, ConcurrentLinkedDeque<Message>> messageStore;
+	private ConcurrentHashMap<String, ConcurrentHashMap<String, Message>> invisibleMessageStore;
+	private ConcurrentHashMap<String, ConcurrentHashMap<String, ScheduledFuture<?>>> scheduledTaskStore;
 
 	private ScheduledExecutorService executorService;
 
@@ -30,71 +48,76 @@ class InMemoryQueueService implements QueueService {
 						new ConcurrentHashMap<>(), Executors.newScheduledThreadPool(5));
 	}
 
-	InMemoryQueueService(ConcurrentHashMap<String, ConcurrentLinkedDeque<Message>> queues,
-			ConcurrentHashMap<String, ConcurrentHashMap<String, Message>> msgIdToSuppressedMsgQueue,
-			ConcurrentHashMap<String, ScheduledFuture<?>> msgIdToSchedulerMap,
+	InMemoryQueueService(ConcurrentHashMap<String, ConcurrentLinkedDeque<Message>> messageStore,
+			ConcurrentHashMap<String, ConcurrentHashMap<String, Message>> invisibleMessageStore,
+			ConcurrentHashMap<String, ConcurrentHashMap<String, ScheduledFuture<?>>> scheduledTaskStore,
 			ScheduledExecutorService executorService) {
-		this.queues = queues;
-		this.msgIdToSuppressedMsgQueue = msgIdToSuppressedMsgQueue;
+		this.messageStore = messageStore;
+		this.invisibleMessageStore = invisibleMessageStore;
 		this.executorService = executorService;
-		this.msgIdToSchedulerMap = msgIdToSchedulerMap;
+		this.scheduledTaskStore = scheduledTaskStore;
 	}
 
 	@Override
 	public void push(String qUrl, String body) {
 		if(isBlank(qUrl) || isBlank(body)) {
-			throw new IllegalArgumentException("Invalid qName or messageBody");
+			throw new IllegalArgumentException("Invalid qUrl or messageBody");
 		}
 		String qName = fromQueueUrl(qUrl);
-		queues.putIfAbsent(qName, new ConcurrentLinkedDeque<>());
+		messageStore.putIfAbsent(qName, new ConcurrentLinkedDeque<>());
 
 		Message newMessage = new Message()
 								.withMessageId(UUID.randomUUID().toString())
 								.withBody(body);
-		queues.get(qName).add(newMessage);
+		messageStore.get(qName).add(newMessage);
 	}
 
 	@Override
 	public Optional<Message> pull(String qUrl) {
 		if(isBlank(qUrl)) {
-			throw new IllegalArgumentException("Invalid qName or messageBody");
+			throw new IllegalArgumentException("Invalid qUrl");
 		}
 		String qName = fromQueueUrl(qUrl);
-		if(queues.get(qName) == null || queues.get(qName).isEmpty()) {
+		if(messageStore.get(qName) == null || messageStore.get(qName).isEmpty()) {
 			return Optional.empty();
 		}
 
-		Message message = queues.get(qName).poll().clone();
+		Message message = messageStore.get(qName).poll().clone();
 		String receiptHandle = "MSG-ID-" + message.getMessageId() + "-RH-" + UUID.randomUUID().toString();
 		message.setReceiptHandle(receiptHandle);
-		suppressMessage(qName, message);
+		addMessageToInvisibleStore(qName, message);
 
 		ScheduledFuture future = executorService.schedule(() -> {
-			msgIdToSuppressedMsgQueue.get(qName).remove(message.getMessageId());
-			queues.get(qName).addFirst(message);
-			msgIdToSchedulerMap.remove(message.getMessageId());
+			invisibleMessageStore.get(qName).remove(message.getMessageId());
+			messageStore.get(qName).addFirst(message);
+			scheduledTaskStore.remove(message.getMessageId());
 		}, VISIBILITY_TIMEOUT_SEC, TimeUnit.SECONDS);
-		msgIdToSchedulerMap.put(message.getMessageId(), future);
 
+		addToScheduledTaskStore(qName, message.getMessageId(), future);
 		return Optional.of(message);
 	}
 
-	private void suppressMessage(String qName, Message message) {
-		msgIdToSuppressedMsgQueue.putIfAbsent(qName,  new ConcurrentHashMap<>());
-		msgIdToSuppressedMsgQueue.get(qName).put(message.getMessageId(), message);
+	private void addMessageToInvisibleStore(String qName, Message message) {
+		invisibleMessageStore.putIfAbsent(qName,  new ConcurrentHashMap<>());
+		invisibleMessageStore.get(qName).put(message.getMessageId(), message);
+	}
+
+	private void addToScheduledTaskStore(String qName, String messageId, ScheduledFuture scheduledFuture) {
+		scheduledTaskStore.putIfAbsent(qName, new ConcurrentHashMap<>());
+		scheduledTaskStore.get(qName).put(messageId, scheduledFuture);
 	}
 
 	@Override
 	public void delete(String qUrl, String receiptHandler) {
 		if(isBlank(qUrl) || isBlank(receiptHandler)) {
-			throw new IllegalArgumentException("Invalid qName or receiptHandler");
+			throw new IllegalArgumentException("Invalid qUrl or receiptHandler");
 		}
 		String qName = fromQueueUrl(qUrl);
 
 		String messageId = fromReceiptHandler(receiptHandler);
-		msgIdToSchedulerMap.get(messageId).cancel(false);
-		msgIdToSchedulerMap.remove(messageId);
-		msgIdToSuppressedMsgQueue.get(qName).remove(messageId);
+		scheduledTaskStore.get(qName).get(messageId).cancel(false);
+		scheduledTaskStore.get(qName).remove(messageId);
+		invisibleMessageStore.get(qName).remove(messageId);
 	}
 
 	private String fromQueueUrl(String queueUrl) {

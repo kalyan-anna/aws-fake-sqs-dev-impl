@@ -16,7 +16,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Each queue maintains 3 stores of concurrent HashMap where queueName is the parent-key for all of them
+ * Each queue maintains 3 concurrent HashMap stores and queueName is the parent-key for all of them
  *		- messageStore holds the incoming messages
  *		- invisibleMessageStore holds the messages that are pulled and waiting to be deleted
  *	    - scheduledTaskStore holds the visibility timeout scheduled tasks

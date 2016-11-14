@@ -9,14 +9,15 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 
 /**
- * UniversalSequenceGenerator is a process independent file based unique id generator.
+ * UniversalSequenceGenerator is a process independent file based unique id generator. However a batch of sequences are cached to reduce
+ * I/O operation.
  *
- * This is used to create unique messageId and receiptHandler
+ * This is used to create unique messageId and receiptHandler.
  */
 class UniversalSequenceGenerator {
 
-	static int TOTAL_CACHE = 1000;
-	static Path SEQUENCE_FILE_PATH = Paths.get(FileQueueService.BASE_PATH, "sequence");
+	static final int TOTAL_CACHE = 100;
+	static final Path SEQUENCE_FILE_PATH = Paths.get(FileQueueService.BASE_PATH, "sequence");
 
 	static {
 		if(Files.notExists(SEQUENCE_FILE_PATH)) {
@@ -38,7 +39,7 @@ class UniversalSequenceGenerator {
 			fetchAndCacheNextSequenceBatch();
 		}
 		remainingCacheCount--;
-		return String.valueOf(currentValue++) + "-sq-" + RandomStringUtils.randomAlphanumeric(4);
+		return currentValue++ + "-sq-" + RandomStringUtils.randomAlphanumeric(4);
 	}
 
 	private void fetchAndCacheNextSequenceBatch() {

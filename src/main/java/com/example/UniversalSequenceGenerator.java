@@ -4,12 +4,9 @@ import org.apache.commons.lang3.RandomStringUtils;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.channels.FileLock;
-import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-
-import static java.util.Collections.*;
 
 /**
  * UniversalSequenceGenerator is a process independent file based unique id generator.
@@ -47,7 +44,7 @@ class UniversalSequenceGenerator {
 	private void fetchAndCacheNextSequenceBatch() {
 		try (RandomAccessFile file = new RandomAccessFile(SEQUENCE_FILE_PATH.toFile(), "rw")) {
 			FileLock lock = file.getChannel().lock();
-			currentValue = Integer.parseInt(file.readLine());
+			currentValue = Long.parseLong(file.readLine());
 			remainingCacheCount = TOTAL_CACHE;
 			Files.write(SEQUENCE_FILE_PATH, Long.toString(currentValue + TOTAL_CACHE).getBytes());
 			lock.release();

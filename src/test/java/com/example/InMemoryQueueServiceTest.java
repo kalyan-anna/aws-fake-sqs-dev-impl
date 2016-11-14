@@ -18,7 +18,7 @@ public class InMemoryQueueServiceTest {
 	private QueueService queueService;
 	private ConcurrentHashMap<String, ConcurrentLinkedDeque<Message>> queues;
 	private ConcurrentHashMap<String, ConcurrentHashMap<String, Message>> msgIdToSuppressedMsgQueue;
-	private ConcurrentHashMap<String, ScheduledFuture<?>> msgIdToschedulerMap;
+	private ConcurrentHashMap<String, ScheduledFuture<?>> msgIdToSchedulerMap;
 
 	private String qUrlBase = "https://sqs.amazonaws.com/373529781950/";
 
@@ -26,13 +26,13 @@ public class InMemoryQueueServiceTest {
 	public void before() {
 		queues = new ConcurrentHashMap<>();
 		msgIdToSuppressedMsgQueue = new ConcurrentHashMap<>();
-		msgIdToschedulerMap = new ConcurrentHashMap<>();
+		msgIdToSchedulerMap = new ConcurrentHashMap<>();
 		queueService = new InMemoryQueueService(queues, msgIdToSuppressedMsgQueue,
-				msgIdToschedulerMap, Executors.newScheduledThreadPool(5));
+				msgIdToSchedulerMap, Executors.newScheduledThreadPool(5));
 	}
 
 	@Test
-	public void push_shouldCreateQueue_whenQueueAlreadyDoesnNotExists() {
+	public void push_shouldCreateQueue_whenDoesNotExists() {
 		String qName = "Test-Queue";
 		queueService.push(qUrlBase + qName, "Message Body");
 		assertThat(queues.get(qName), is(notNullValue()));
@@ -43,8 +43,8 @@ public class InMemoryQueueServiceTest {
 		String qName = "Test-Queue";
 		String inputMessageBody = "Message Body";
 		queueService.push(qUrlBase + qName, inputMessageBody);
-		assertThat(queues.get(qName), is(notNullValue()));
-		assertThat(queues.get(qName).poll().getBody(), equalTo(inputMessageBody));
+		assertThat(queues.get(qName).peek().getBody(), equalTo(inputMessageBody));
+		assertThat(queues.get(qName).peek().getMessageId(), notNullValue());
 	}
 
 	@Test(expected = IllegalArgumentException.class)
@@ -69,7 +69,7 @@ public class InMemoryQueueServiceTest {
 
 		Optional<Message> message = queueService.pull(qUrlBase + qName);
 		assertThat(message.isPresent(), is(true));
-		assertThat(message.get().getBody(), equalTo(firstMessage));
+		assertThat(message.orElse(null).getBody(), equalTo(firstMessage));
 	}
 
 	@Test
@@ -93,7 +93,7 @@ public class InMemoryQueueServiceTest {
 	}
 
 	@Test
-	public void pull_shouldReturnValidMessageIdBodyAndReceiptHandler() {
+	public void pull_shouldReturnValidMessageIdReceiptHandlerAndBody() {
 		String qName = "Test-Queue";
 		String inputBody = "Message Body 1";
 		queueService.push(qUrlBase + qName, inputBody);
@@ -101,9 +101,9 @@ public class InMemoryQueueServiceTest {
 		Optional<Message> message = queueService.pull(qUrlBase + qName);
 
 		assertThat(message.isPresent(), is(true));
-		assertThat(message.get().getBody(), equalTo(inputBody));
-		assertThat(message.get().getReceiptHandle(), notNullValue());
-		assertThat(message.get().getMessageId(), notNullValue());
+		assertThat(message.orElse(null).getBody(), equalTo(inputBody));
+		assertThat(message.orElse(null).getReceiptHandle(), notNullValue());
+		assertThat(message.orElse(null).getMessageId(), notNullValue());
 	}
 
 	@Test
@@ -115,7 +115,7 @@ public class InMemoryQueueServiceTest {
 		Optional<Message> message = queueService.pull(qUrlBase + qName);
 
 		assertThat(queues.get(qName).isEmpty(), is(true));
-		assertThat(msgIdToSuppressedMsgQueue.get(qName).get(message.get().getMessageId()), notNullValue());
+		assertThat(msgIdToSuppressedMsgQueue.get(qName).get(message.orElse(null).getMessageId()), notNullValue());
 	}
 
 	@Test
@@ -125,7 +125,8 @@ public class InMemoryQueueServiceTest {
 		queueService.push(qUrlBase + qName, inputBody);
 
 		Optional<Message> message = queueService.pull(qUrlBase + qName);
-		assertThat(msgIdToschedulerMap.get(message.get().getMessageId()), notNullValue());
+		ScheduledFuture scheduledFuture = msgIdToSchedulerMap.get(message.orElse(null).getMessageId());
+		assertThat(scheduledFuture, notNullValue());
 	}
 
 	@Test
@@ -134,13 +135,13 @@ public class InMemoryQueueServiceTest {
 		String inputBody = "Message Body 1";
 		queueService.push(qUrlBase + qName, inputBody);
 		Optional<Message> message = queueService.pull(qUrlBase + qName);
-		ScheduledFuture future = msgIdToschedulerMap.get(message.get().getMessageId());
+		ScheduledFuture future = msgIdToSchedulerMap.get(message.orElse(null).getMessageId());
 
-		queueService.delete(qUrlBase + qName, message.get().getReceiptHandle());
+		queueService.delete(qUrlBase + qName, message.orElse(null).getReceiptHandle());
 
 		assertThat(queues.get(qName).isEmpty(), is(true));
 		assertThat(msgIdToSuppressedMsgQueue.get(qName).isEmpty(), is(true));
-		assertThat(msgIdToschedulerMap.get(message.get().getMessageId()), nullValue());
+		assertThat(msgIdToSchedulerMap.get(message.orElse(null).getMessageId()), nullValue());
 		assertThat(future.isCancelled(), is(true));
 	}
 

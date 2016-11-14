@@ -2,15 +2,14 @@ package com.example;
 
 import com.amazonaws.services.sqs.AmazonSQSClient;
 import com.amazonaws.services.sqs.model.Message;
-
-import static org.apache.commons.lang.StringUtils.*;
+import static org.apache.commons.lang3.StringUtils.*;
 import java.util.Optional;
 
-public class SqsQueueService implements QueueService {
+class SqsQueueService implements QueueService {
 
   private AmazonSQSClient sqs;
 
-  public SqsQueueService(AmazonSQSClient sqs) {
+  SqsQueueService(AmazonSQSClient sqs) {
     this.sqs = sqs;
   }
 

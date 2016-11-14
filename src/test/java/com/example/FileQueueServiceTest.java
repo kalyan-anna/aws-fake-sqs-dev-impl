@@ -12,7 +12,7 @@ import java.util.stream.IntStream;
 public class FileQueueServiceTest {
 
 	private QueueService queueService;
-	private String qUrlBase = "https://sqs.amazonaws.com/373529781950/";
+	private final String qUrlBase = "https://sqs.amazonaws.com/373529781950/";
 
 	@Before
 	public void before() {
@@ -45,9 +45,7 @@ public class FileQueueServiceTest {
 	public void push_test() throws InterruptedException {
 		Runnable task = () -> queueService.push(qUrlBase + "qUrl", "test message");
 		ExecutorService service = Executors.newFixedThreadPool(5);
-		IntStream.rangeClosed(1, 10).parallel().forEach(i -> {
-			service.execute(task);
-		});
+		IntStream.rangeClosed(1, 10).parallel().forEach(i -> service.execute(task));
 		service.awaitTermination(10, TimeUnit.SECONDS);
 	}
 }

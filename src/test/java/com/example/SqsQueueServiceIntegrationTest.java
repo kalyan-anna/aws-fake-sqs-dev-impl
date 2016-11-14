@@ -30,7 +30,7 @@ public class SqsQueueServiceIntegrationTest {
 
 	@BeforeClass
 	public static void beforeClass() {
-		AWSCredentials credentials = null;
+		AWSCredentials credentials;
 		try {
 			credentials = new ProfileCredentialsProvider().getCredentials();
 		} catch (Exception e) {
@@ -51,7 +51,7 @@ public class SqsQueueServiceIntegrationTest {
 	@After
 	public void after() {
 		if(qUrl != null) {
-			System.out.println("deleteing qUrl " + qUrl);
+			System.out.println("deleting qUrl " + qUrl);
 			SQS.deleteQueue(qUrl);
 		}
 	}
@@ -66,7 +66,7 @@ public class SqsQueueServiceIntegrationTest {
 
 		Optional<Message> messageInQueue = SQS.receiveMessage(qUrl).getMessages().stream().findFirst();
 		assertThat(messageInQueue.isPresent(), is(true));
-		assertThat(messageInQueue.get().getBody(), equalTo(message));
+		assertThat(messageInQueue.orElse(null).getBody(), equalTo(message));
 	}
 
 	@Test
@@ -79,7 +79,7 @@ public class SqsQueueServiceIntegrationTest {
 		Optional<Message> message = queueService.pull(qName);
 
 		assertThat(message.isPresent(), is(true));
-		assertThat(message.get().getBody(), equalTo(expectedBody));
+		assertThat(message.orElse(null).getBody(), equalTo(expectedBody));
 	}
 
 	@Test
@@ -87,7 +87,7 @@ public class SqsQueueServiceIntegrationTest {
 		qUrl = SQS.createQueue("IT-test-3-queue--7").getQueueUrl();
 		SQS.sendMessage(qUrl, "Message Body");
 
-		Message message = queueService.pull(qUrl).get();
+		Message message = queueService.pull(qUrl).orElse(null);
 		queueService.delete(qUrl, message.getReceiptHandle());
 
 		List<Message> messages = SQS.receiveMessage(qUrl).getMessages();

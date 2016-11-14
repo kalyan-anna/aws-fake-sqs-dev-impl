@@ -10,13 +10,13 @@ import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.Optional;
 
-import static org.apache.commons.lang.StringUtils.isBlank;
+import static org.apache.commons.lang3.StringUtils.*;
 
-public class FileQueueService implements QueueService {
+class FileQueueService implements QueueService {
 
-	static String BASE_PATH = "canva-test/sqs";
+	static final String BASE_PATH = "canva-test/sqs";
 
-	private UniversalSequenceGenerator sequence = UniversalSequenceGenerator.getInstance();
+	private final UniversalSequenceGenerator sequence = UniversalSequenceGenerator.getInstance();
 
 	@Override
 	public void push(String qUrl, String messageBody) {

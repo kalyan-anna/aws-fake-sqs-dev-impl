@@ -30,8 +30,9 @@ import java.util.concurrent.TimeUnit;
  * A unique receiptHandler is generated for each pulled message and a scheduled task is submitted to check for visibility timeout.
  *
  * Delete
- * When a delete request is received, the message is removed from invisibleMessageStore and scheduled task for visibility timeout
- * is cancelled.
+ * When a delete request is received, the message is removed from invisibleMessageStore and associated scheduled task
+ * for visibility timeout is cancelled.
+ *
  */
 class InMemoryQueueService implements QueueService {
 

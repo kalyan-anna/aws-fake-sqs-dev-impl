@@ -16,7 +16,7 @@ class FileQueueService implements QueueService {
 
 	static final String BASE_PATH = "canva-test/sqs";
 
-	private final UniversalSequenceGenerator sequence = UniversalSequenceGenerator.getInstance();
+	private final UniversalSequenceGenerator sequence = new UniversalSequenceGenerator();
 
 	@Override
 	public void push(String qUrl, String messageBody) {
@@ -26,7 +26,7 @@ class FileQueueService implements QueueService {
 		String qName = fromQueueUrl(qUrl);
 
 		setupQueueDirectoriesIfDoesNotExists(qName);
-		String uniqueId = sequence.nextSequence(qName);
+		String uniqueId = sequence.nextValue();
 		writeToFile(qName, uniqueId, messageBody);
 	}
 

@@ -28,7 +28,7 @@ import static org.apache.commons.lang3.StringUtils.*;
  *
  * 	This service also maintains a scheduledTaskStore and holds active visibility timeout tasks.
  *
- * 	Every push, pull or delete request locks the queue to make the design simple.
+ * 	Every push, pull or delete request locks the queue to keep the implementation simple.
  */
 class FileQueueService implements QueueService {
 
@@ -258,7 +258,13 @@ class FileQueueService implements QueueService {
 
 	private void lock(String lockPath) {
 		File file = new File(lockPath);
-		while(!file.mkdirs()) { }
+		while(!file.mkdirs()) {
+			try {
+				Thread.sleep(50);
+			} catch (InterruptedException e) {
+				throw new RuntimeException(e);
+			}
+		}
 	}
 
 	private void unlock(String lockPath) {

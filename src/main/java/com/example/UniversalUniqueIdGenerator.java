@@ -9,10 +9,10 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 
 /**
- * UniversalUniqueIdGenerator is a process independent file based unique id generator. However a batch of sequences are cached to reduce
+ * UniversalUniqueIdGenerator is a file based unique id generator. However a batch of sequences are cached to reduce
  * I/O operation.
  *
- * This is used to create unique messageId and receiptHandler.
+ * This is used to generate unique messageId and receiptHandler.
  */
 class UniversalUniqueIdGenerator {
 

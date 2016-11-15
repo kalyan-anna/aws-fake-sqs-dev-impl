@@ -23,7 +23,7 @@ import static org.apache.commons.lang3.StringUtils.*;
 
 /**
  * FileQueueService creates separate folder for each queue based on queueName and maintains two files
- * 	- "message" file is used to store incoming messages
+ * 	- "message" file stores incoming messages in FIFO order
  * 	- "invisibleMessage" file is used to store the messages that are pulled and waiting to be deleted
  *
  *  Pull request moves first record in "message" to "invisibleMessage" file.

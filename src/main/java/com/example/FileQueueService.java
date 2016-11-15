@@ -22,13 +22,14 @@ import static java.nio.file.StandardOpenOption.*;
 import static org.apache.commons.lang3.StringUtils.*;
 
 /**
- * FileQueueService creates a separate folder for each queueName and maintains two files
- * 	- message file is used to store incoming messages
- * 	- invisible file is used to store the messages that are pulled and waiting to be deleted
+ * FileQueueService creates separate folder for each queue based on queueName and maintains two files
+ * 	- "message" file is used to store incoming messages
+ * 	- "invisibleMessage" file is used to store the messages that are pulled and waiting to be deleted
  *
- * 	This service also maintains a scheduledTaskStore and holds active visibility timeout tasks.
+ * 	This service also maintains an in-memory scheduledTaskStore and holds active visibility timeout tasks.
  *
  * 	Every push, pull or delete request locks the queue to keep the implementation simple.
+ * 	Pull request removes first record in "message" file and moves it to "invisibleMessage" file.
  */
 class FileQueueService implements QueueService {
 

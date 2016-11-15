@@ -93,19 +93,19 @@ class FileQueueService implements QueueService {
 
 		Optional<Message> message = pollMessageFromQueue(qName);
 		if(!message.isPresent()) {
-			return Optional.empty();
+			return message;
 		}
 		String receiptHandle = "MSG-ID-" + message.get().getMessageId() + "-RH-" + idGenerator.nextValue();
 		message.get().setReceiptHandle(receiptHandle);
 		addMessageToInvisibleFile(qName, message.get());
 
-		ScheduledFuture future = executorService.schedule(() -> {
+		ScheduledFuture msgVisibilityTimeoutTask = executorService.schedule(() -> {
 			Message msg = pullFromInvisibleFile(qName, message.get().getMessageId());
 			addFirstToQueueFile(qName, msg);
 			scheduledTaskStore.get(qName).remove(message.get().getMessageId());
 		}, VISIBILITY_TIMEOUT, TimeUnit.SECONDS);
 
-		addToScheduledTaskStore(qName, message.get().getMessageId(), future);
+		addToScheduledTaskStore(qName, message.get().getMessageId(), msgVisibilityTimeoutTask);
 		return message;
 	}
 

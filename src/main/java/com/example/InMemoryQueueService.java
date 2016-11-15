@@ -89,13 +89,13 @@ class InMemoryQueueService implements QueueService {
 		message.setReceiptHandle(receiptHandle);
 		addToInvisibleStore(qName, message);
 
-		ScheduledFuture future = executorService.schedule(() -> {
+		ScheduledFuture msgVisibilityTimeoutTask = executorService.schedule(() -> {
 			invisibleMessageStore.get(qName).remove(message.getMessageId());
 			messageStore.get(qName).addFirst(message);
 			scheduledTaskStore.get(qName).remove(message.getMessageId());
 		}, VISIBILITY_TIMEOUT, TimeUnit.SECONDS);
 
-		addToScheduledTaskStore(qName, message.getMessageId(), future);
+		addToScheduledTaskStore(qName, message.getMessageId(), msgVisibilityTimeoutTask);
 		return Optional.of(message);
 	}
 

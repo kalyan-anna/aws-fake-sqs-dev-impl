@@ -1,8 +1,8 @@
 package com.example;
 
 import com.amazonaws.services.sqs.model.Message;
+import org.apache.commons.lang3.RandomStringUtils;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
@@ -10,12 +10,16 @@ import org.junit.runners.Parameterized;
 import static org.junit.Assert.assertThat;
 import static org.hamcrest.Matchers.*;
 
+import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 @RunWith(value = Parameterized.class)
@@ -23,7 +27,7 @@ public class QueueServiceTest extends BaseTestClass {
 
 	@Parameterized.Parameters
 	public static Collection<String> getParameters() {
-		return Arrays.asList("InMemoryQueueService");
+		return Arrays.asList("InMemoryQueueService", "FileQueueService");
 	}
 
 	private String queueServiceImplClass;
@@ -38,9 +42,13 @@ public class QueueServiceTest extends BaseTestClass {
 	}
 
 	@Before
-	public void before() {
+	public void before() throws Exception {
 		if(queueServiceImplClass.equals("InMemoryQueueService")) {
 			this.queueService = new InMemoryQueueService();
+		}
+		if(queueServiceImplClass.equals("FileQueueService")) {
+			this.queueService = new FileQueueService(new UniversalUniqueIdGenerator());
+			FileQueueServiceTest.deleteAllSubDirectories(Paths.get(FileQueueServiceTest.BASE_PATH));
 		}
 	}
 
@@ -120,12 +128,29 @@ public class QueueServiceTest extends BaseTestClass {
 		queueService.delete(qUrl2, msg4.orElse(null).getReceiptHandle());
 	}
 
-	@Ignore
 	@Test
 	public void testWithMultipleThreads() throws InterruptedException {
-		Runnable push = () -> queueService.push(qUrlBase + "test-queue", "test message");
-		ExecutorService service = Executors.newFixedThreadPool(2);
-		IntStream.rangeClosed(1, 10).parallel().forEach(i -> service.execute(push));
-		service.awaitTermination(10, TimeUnit.SECONDS);
+		Set<Message> messages = new HashSet<>();
+		Runnable sqsTask = () -> {
+			String qName = "test-queue";
+			String body = "Test Message body";
+			queueService.push(qUrlBase + qName, body + RandomStringUtils.randomAlphabetic(10));
+			Optional<Message> message = queueService.pull(qUrlBase + qName);
+			messages.add(message.orElse(null));
+			queueService.delete(qUrlBase + qName, message.orElse(null).getReceiptHandle());
+		};
+		ExecutorService service = Executors.newFixedThreadPool(3);
+		IntStream.rangeClosed(1, 10).parallel().forEach(i -> service.execute(sqsTask));
+		service.shutdown();
+		boolean completed = service.awaitTermination(10, TimeUnit.SECONDS);
+		if(!completed) {
+			System.out.println("Threads couldn't complete");
+			return;
+		}
+		assertThat(messages.size(), equalTo(10));
+		Set<String> messageIds = messages.stream().map(Message::getMessageId).collect(Collectors.toSet());
+		assertThat(messageIds.size(), equalTo(10));
+		Set<String> handlers = messages.stream().map(Message::getReceiptHandle).collect(Collectors.toSet());
+		assertThat(handlers.size(), equalTo(10));
 	}
 }

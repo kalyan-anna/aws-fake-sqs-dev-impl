@@ -1,6 +1,8 @@
 package com.example;
 
 import com.amazonaws.services.sqs.model.Message;
+import org.apache.commons.lang3.StringUtils;
+
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -8,6 +10,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -99,7 +102,7 @@ class FileQueueService implements QueueService {
 		addMessageToInvisibleFile(qName, message.get());
 
 		ScheduledFuture future = executorService.schedule(() -> {
-			Message msg = pullFromInvisible(qName, message.get().getMessageId());
+			Message msg = pullFromInvisibleFile(qName, message.get().getMessageId());
 			addFirstToQueueFile(qName, msg);
 			scheduledTaskStore.get(qName).remove(message.get().getMessageId());
 		}, VISIBILITY_TIMEOUT, TimeUnit.SECONDS);
@@ -144,22 +147,6 @@ class FileQueueService implements QueueService {
 		scheduledTaskStore.get(qName).put(messageId, scheduledFuture);
 	}
 
-	private Message pullFromInvisible(String qName, String messageId) {
-		Path invisiblePath = Paths.get(BASE_PATH, qName, "invisibleMessages");
-		lockQ(qName);
-		try (Stream<String> stream = Files.lines(invisiblePath)) {
-			Optional<String> record = stream.filter(line -> line.split(":::")[0].equals(messageId)).findFirst();
-			List<String> remainingLines = stream.parallel().filter(line -> !line.split(":::")[0].equals(messageId))
-												.collect(Collectors.toList());
-			Files.write(invisiblePath, remainingLines);
-			return toMessage(record.orElse(""));
-		} catch (IOException e) {
-			throw new RuntimeException(e);
-		} finally {
-			unlockQ(qName);
-		}
-	}
-
 	private void addFirstToQueueFile(String qName, Message message) {
 		Path messagePath = Paths.get(BASE_PATH, qName, "messages");
 		lockQ(qName);
@@ -176,7 +163,41 @@ class FileQueueService implements QueueService {
 
 	@Override
 	public void delete(String qUrl, String receiptHandler) {
+		if(isBlank(qUrl) || isBlank(receiptHandler)) {
+			throw new IllegalArgumentException("Invalid qUrl or receiptHandler");
+		}
+		String qName = fromQueueUrl(qUrl);
 
+		String messageId = fromReceiptHandler(receiptHandler);
+		if(scheduledTaskStore.get(qName).get(messageId) == null) {
+			System.out.println("Scheduled task unavailable. Visibility timeout might have been executed. "
+					+ "Message with handler " + receiptHandler + " may not be available for deletion");
+			return;
+		}
+		scheduledTaskStore.get(qName).get(messageId).cancel(false);
+		scheduledTaskStore.get(qName).remove(messageId);
+		pullFromInvisibleFile(qName, messageId);
+	}
+
+	private String fromReceiptHandler(String receiptHandler) {
+		return StringUtils.substringBetween(receiptHandler, "MSG-ID-", "-RH-");
+	}
+
+	private Message pullFromInvisibleFile(String qName, String messageId) {
+		Path invisiblePath = Paths.get(BASE_PATH, qName, "invisibleMessages");
+		lockQ(qName);
+		try (Stream<String> stream = Files.lines(invisiblePath)) {
+			Set<String> lines = stream.collect(Collectors.toSet());
+			Optional<String> record = lines.stream().filter(line -> line.split(":::")[0].equals(messageId)).findFirst();
+			Set<String> remainingLines = lines.stream().filter(line -> !line.split(":::")[0].equals(messageId))
+					.collect(Collectors.toSet());
+			Files.write(invisiblePath, remainingLines);
+			return toMessage(record.orElse(""));
+		} catch (IOException e) {
+			throw new RuntimeException(e);
+		} finally {
+			unlockQ(qName);
+		}
 	}
 
 	private Message toMessage(String record) {

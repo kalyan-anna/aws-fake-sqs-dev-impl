@@ -4,8 +4,6 @@ import com.amazonaws.services.sqs.model.Message;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import java.io.File;
@@ -16,27 +14,19 @@ import java.nio.file.Paths;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 import static org.hamcrest.Matchers.*;
 import static org.junit.Assert.assertThat;
 
 public class FileQueueServiceTest extends BaseTestClass {
 
-	private static String BASE_PATH;
+	static String BASE_PATH = System.getProperty("fileQueueService.basePath");
 	private UniversalUniqueIdGenerator sequence = new UniversalUniqueIdGenerator();
 	private QueueService queueService;
 	private final String qUrlBase = "https://sqs.amazonaws.com/373529781950/";
 	private ConcurrentHashMap<String, ConcurrentHashMap<String, ScheduledFuture<?>>> scheduledTaskStore;
-
-	@BeforeClass
-	public static void beforeAll() {
-		BASE_PATH = System.getProperty("fileQueueService.basePath");
-	}
 
 	@Before
 	public void before() throws Exception {
@@ -150,7 +140,28 @@ public class FileQueueServiceTest extends BaseTestClass {
 		assertThat(task.isCancelled(), is(false));
 	}
 
-	private void deleteAllSubDirectories(Path dirPath) throws Exception {
+	@Test(expected = IllegalArgumentException.class)
+	public void delete_shouldThrowException_whenQueueUrlIsInvalid() {
+		queueService.delete(null, "receiptHandler");
+	}
+
+	@Test(expected = IllegalArgumentException.class)
+	public void delete_shouldThrowException_whenReceiptHandlerIsInvalid() {
+		queueService.delete("qUrl", null);
+	}
+
+	@Test
+	public void delete_shouldRemoveRecordFromInvisibleFile(){
+		String qName = "test-queue";
+		String body = "test message body";
+		queueService.push(qUrlBase + qName, body);
+		Optional<Message> message = queueService.pull(qUrlBase + qName);
+		queueService.delete(qUrlBase + qName, message.orElse(null).getReceiptHandle());
+		List<String> lines = readAllLines(Paths.get(BASE_PATH, qName, "invisibleMessages"));
+		assertThat(lines.isEmpty(), is(true));
+	}
+
+	static void deleteAllSubDirectories(Path dirPath) throws Exception {
 		Files.list(dirPath)
 				.map(Path::toFile)
 				.filter(File::isDirectory)
@@ -170,12 +181,4 @@ public class FileQueueServiceTest extends BaseTestClass {
 		}
 	}
 
-	@Ignore
-	@Test
-	public void test_withMultipleThreads() throws InterruptedException {
-		Runnable fileLockTest = () -> queueService.push(qUrlBase + "test-queue", "test message");
-		ExecutorService service = Executors.newFixedThreadPool(2);
-		IntStream.rangeClosed(1, 10).parallel().peek(System.out::println).forEach(i -> service.execute(fileLockTest));
-		service.awaitTermination(10, TimeUnit.SECONDS);
-	}
 }

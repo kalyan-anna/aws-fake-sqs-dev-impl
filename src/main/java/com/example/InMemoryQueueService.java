@@ -117,6 +117,11 @@ class InMemoryQueueService implements QueueService {
 		String qName = fromQueueUrl(qUrl);
 
 		String messageId = fromReceiptHandler(receiptHandler);
+		if(scheduledTaskStore.get(qName).get(messageId) == null) {
+			System.out.println("Scheduled task unavailable. Visibility timeout might have been executed. "
+					+ "Message with handler " + receiptHandler + " may not be available for deletion");
+			return;
+		}
 		scheduledTaskStore.get(qName).get(messageId).cancel(false);
 		scheduledTaskStore.get(qName).remove(messageId);
 		invisibleMessageStore.get(qName).remove(messageId);

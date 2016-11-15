@@ -2,18 +2,19 @@ package com.example;
 
 import com.amazonaws.services.sqs.model.Message;
 import com.google.common.util.concurrent.testing.TestingExecutors;
+import org.apache.commons.lang3.RandomStringUtils;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
+import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
-
 import static org.hamcrest.Matchers.*;
 import static org.junit.Assert.assertThat;
 
@@ -22,7 +23,7 @@ public class QueueServiceVisibilityTimeoutTest extends BaseTestClass {
 
 	@Parameterized.Parameters
 	public static Collection<String> getParameters() {
-		return Arrays.asList("InMemoryQueueService");
+		return Arrays.asList("InMemoryQueueService", "FileQueueService");
 	}
 
 	private String queueServiceImplClass;
@@ -34,10 +35,15 @@ public class QueueServiceVisibilityTimeoutTest extends BaseTestClass {
 	}
 
 	@Before
-	public void before() {
+	public void before() throws Exception {
 		if(queueServiceImplClass.equals("InMemoryQueueService")) {
 			this.queueService = new InMemoryQueueService(new ConcurrentHashMap<>(), new ConcurrentHashMap<>(),
 					new ConcurrentHashMap<>(), TestingExecutors.sameThreadScheduledExecutor());
+		}
+		if(queueServiceImplClass.equals("FileQueueService")) {
+			this.queueService = new FileQueueService(new UniversalUniqueIdGenerator(),
+					TestingExecutors.sameThreadScheduledExecutor(), new ConcurrentHashMap<>());
+			FileQueueServiceTest.deleteAllSubDirectories(Paths.get(FileQueueServiceTest.BASE_PATH));
 		}
 	}
 

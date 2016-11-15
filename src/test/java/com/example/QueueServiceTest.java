@@ -22,6 +22,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+/**
+ * These tests are like integration tests and common for all implementation. So placed them in separate test class
+ */
 @RunWith(value = Parameterized.class)
 public class QueueServiceTest extends BaseTestClass {
 

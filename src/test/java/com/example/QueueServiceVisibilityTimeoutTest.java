@@ -2,7 +2,6 @@ package com.example;
 
 import com.amazonaws.services.sqs.model.Message;
 import com.google.common.util.concurrent.testing.TestingExecutors;
-import org.apache.commons.lang3.RandomStringUtils;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;

@@ -21,6 +21,15 @@ import java.util.stream.Stream;
 import static java.nio.file.StandardOpenOption.*;
 import static org.apache.commons.lang3.StringUtils.*;
 
+/**
+ * FileQueueService creates a separate folder for each queueName and maintains two files
+ * 	- message file is used to store incoming messages
+ * 	- invisible file is used to store the messages that are pulled and waiting to be deleted
+ *
+ * 	This service also maintains a scheduledTaskStore and holds active visibility timeout tasks.
+ *
+ * 	Every push, pull or delete request locks the queue to make the design simple.
+ */
 class FileQueueService implements QueueService {
 
 	private static final String BASE_PATH = System.getProperty("fileQueueService.basePath");

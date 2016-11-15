@@ -9,30 +9,23 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 
 /**
- * UniversalSequenceGenerator is a process independent file based unique id generator. However a batch of sequences are cached to reduce
+ * UniversalUniqueIdGenerator is a process independent file based unique id generator. However a batch of sequences are cached to reduce
  * I/O operation.
  *
  * This is used to create unique messageId and receiptHandler.
  */
-class UniversalSequenceGenerator {
+class UniversalUniqueIdGenerator {
 
 	static final int TOTAL_CACHE = 100;
-	static final Path SEQUENCE_FILE_PATH = Paths.get(FileQueueService.BASE_PATH, "sequence");
-
-	static {
-		if(Files.notExists(SEQUENCE_FILE_PATH)) {
-			try {
-				Files.createDirectories(SEQUENCE_FILE_PATH.getParent());
-				Files.createFile(SEQUENCE_FILE_PATH);
-				Files.write(SEQUENCE_FILE_PATH, "1".getBytes());
-			} catch (IOException e) {
-				throw new RuntimeException(e);
-			}
-		}
-	}
+	private final Path SEQUENCE_FILE_PATH;
 
 	private int remainingCacheCount = 0;
 	private long currentValue;
+
+	UniversalUniqueIdGenerator() {
+		String basePath = System.getProperty("fileQueueService.basePath");
+		SEQUENCE_FILE_PATH = Paths.get(basePath, "sequence");
+	}
 
 	synchronized String nextValue() {
 		if(remainingCacheCount == 0) {

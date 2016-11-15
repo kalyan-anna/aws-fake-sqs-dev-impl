@@ -1,38 +1,44 @@
 package com.example;
 
 import com.amazonaws.services.sqs.model.Message;
-
-import java.io.BufferedWriter;
 import java.io.File;
-import java.io.FileWriter;
 import java.io.IOException;
-import java.io.PrintWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.List;
 import java.util.Optional;
-
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+import static java.nio.file.StandardOpenOption.*;
 import static org.apache.commons.lang3.StringUtils.*;
 
 class FileQueueService implements QueueService {
 
-	static final String BASE_PATH = "canva-test/sqs";
-	private static final String UNIVERSAL_LOCK = BASE_PATH + "/universalLock";
+	private final String BASE_PATH;
+	private final String UNIVERSAL_LOCK;
+	private final String NEW_LINE = System.getProperty("line.separator");
 
-	static {
-		if(Files.notExists(Paths.get(BASE_PATH))) {
+	private UniversalUniqueIdGenerator idGenerator;
+
+	FileQueueService(UniversalUniqueIdGenerator idGenerator) {
+		this.idGenerator = idGenerator;
+		this.BASE_PATH = System.getProperty("fileQueueService.basePath");
+		this.UNIVERSAL_LOCK = BASE_PATH + "/universal-lock";
+		setupBaseDirIfAbsent(BASE_PATH);
+	}
+
+	static void setupBaseDirIfAbsent(String basePath) {
+		if(Files.notExists(Paths.get(basePath))) {
 			try {
-				Files.createDirectories(Paths.get(BASE_PATH));
+				Files.createDirectories(Paths.get(basePath));
+				Path sequenceFilePath = Paths.get(basePath, "sequence");
+				Files.createFile(sequenceFilePath);
+				Files.write(sequenceFilePath, "1".getBytes());
 			} catch (IOException e) {
 				throw new RuntimeException(e);
 			}
 		}
-	}
-
-	private UniversalSequenceGenerator sequence;
-
-	FileQueueService(UniversalSequenceGenerator sequence) {
-		this.sequence = sequence;
 	}
 
 	@Override
@@ -43,8 +49,84 @@ class FileQueueService implements QueueService {
 		String qName = fromQueueUrl(qUrl);
 
 		setupQueueDirectoryIfAbsent(qName);
-		String uniqueId = sequence.nextValue();
-		writeMessageToQueue(qName, uniqueId, messageBody);
+		String messageId = idGenerator.nextValue();
+		addMessageToQueue(qName, messageId, messageBody);
+	}
+
+	private void addMessageToQueue(String qName, String messageId, String body) {
+		String record = toRecord(messageId, "", body) + NEW_LINE;
+		Path messagePath = Paths.get(BASE_PATH, qName, "messages");
+		lockQ(qName);
+		try {
+			Files.write(messagePath, record.getBytes(), APPEND);
+		} catch (IOException e) {
+			throw new RuntimeException(e);
+		} finally {
+			unlockQ(qName);
+		}
+	}
+
+	@Override
+	public Optional<Message> pull(String qUrl) {
+		if(isBlank(qUrl)) {
+			throw new IllegalArgumentException("Invalid qUrl");
+		}
+		String qName = fromQueueUrl(qUrl);
+
+		Optional<Message> message = pollQueue(qName);
+		if(!message.isPresent()) {
+			return Optional.empty();
+		}
+		String receiptHandle = "MSG-ID-" + message.get().getMessageId() + "-RH-" + idGenerator.nextValue();
+		message.get().setReceiptHandle(receiptHandle);
+
+		addToInvisible(qName, message.get());
+		return message;
+	}
+
+	private Optional<Message> pollQueue(String qName) {
+		Path messagePath = Paths.get(BASE_PATH, qName, "messages");
+		lockQ(qName);
+		try (Stream<String> stream = Files.lines(messagePath)) {
+			List<String> lines = stream.collect(Collectors.toList());
+			if(lines.isEmpty()) {
+				return Optional.empty();
+			}
+			String record = lines.remove(0);
+			Files.write(messagePath, lines);
+			return Optional.of(toMessage(record));
+		} catch (IOException e) {
+			throw new RuntimeException(e);
+		} finally {
+			unlockQ(qName);
+		}
+	}
+
+	private void addToInvisible(String qName, Message message) {
+		Path invisiblePath = Paths.get(BASE_PATH, qName, "invisibleMessages");
+		String record = toRecord(message.getMessageId(), message.getReceiptHandle(), message.getBody()) + NEW_LINE;
+		lockQ(qName);
+		try  {
+			Files.write(invisiblePath, record.getBytes(), APPEND);
+		} catch (IOException e) {
+			throw new RuntimeException(e);
+		} finally {
+			unlockQ(qName);
+		}
+	}
+
+	private Message toMessage(String record) {
+		String[] fields = record.split(":::");
+		return new Message().withMessageId(fields[0]).withReceiptHandle(fields[1]).withBody(fields[2]);
+	}
+
+	private String toRecord(String messageId, String receiptHandler, String body) {
+		return messageId + ":::" + receiptHandler + ":::" + body;
+	}
+
+	@Override
+	public void delete(String qUrl, String receiptHandler) {
+
 	}
 
 	private void setupQueueDirectoryIfAbsent(String qName) {
@@ -52,6 +134,7 @@ class FileQueueService implements QueueService {
 		if(Files.notExists(qPath)) {
 			lock(UNIVERSAL_LOCK);
 			if(Files.exists(qPath)) {
+				unlock(UNIVERSAL_LOCK);
 				return;
 			}
 			try {
@@ -61,38 +144,23 @@ class FileQueueService implements QueueService {
 			} catch (IOException e) {
 				throw new RuntimeException(e);
 			} finally {
-				unLock(UNIVERSAL_LOCK);
+				unlock(UNIVERSAL_LOCK);
 			}
 		}
 	}
 
-	private void writeMessageToQueue(String qName, String uniqueId, String body) {
-		String record = uniqueId + ":::" + body;
-		Path messagePath = Paths.get(BASE_PATH, qName, "messages");
-		Path lock = Paths.get(BASE_PATH, qName, "lock");
-		lock(lock.toString());
-		try (PrintWriter writer = new PrintWriter(new BufferedWriter(new FileWriter(messagePath.toFile(), true)))) {
-			writer.append(record);
-			writer.println();
-		} catch (IOException e) {
-			throw new RuntimeException(e);
-		} finally {
-			unLock(lock.toString());
-		}
-	}
-
-	@Override
-	public Optional<Message> pull(String qUrl) {
-		return null;
-	}
-
-	@Override
-	public void delete(String qUrl, String receiptHandler) {
-
-	}
-
 	private String fromQueueUrl(String queueUrl) {
 		return Paths.get(queueUrl).getFileName().toString();
+	}
+
+	private void lockQ(String qName) {
+		Path lock = Paths.get(BASE_PATH, qName, "lock");
+		lock(lock.toString());
+	}
+
+	private void unlockQ(String qName) {
+		Path lock = Paths.get(BASE_PATH, qName, "lock");
+		unlock(lock.toString());
 	}
 
 	private void lock(String lockPath) {
@@ -100,8 +168,9 @@ class FileQueueService implements QueueService {
 		while(!file.mkdirs()) { }
 	}
 
-	private void unLock(String lockPath) {
+	private void unlock(String lockPath) {
 		File file = new File(lockPath);
 		file.delete();
 	}
+
 }

@@ -22,7 +22,7 @@ import static org.junit.Assert.assertThat;
 This integration tests can be turned on if it is a separate project on its own
  */
 @Ignore
-public class SqsQueueServiceIntegrationTest {
+public class SqsQueueServiceIntegrationTest extends BaseTestClass {
 
 	private static AmazonSQSClient SQS;
 	private SqsQueueService queueService;

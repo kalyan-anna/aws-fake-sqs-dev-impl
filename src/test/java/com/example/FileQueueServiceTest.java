@@ -1,8 +1,10 @@
 package com.example;
 
+import com.amazonaws.services.sqs.model.Message;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Ignore;
 import org.junit.Test;
 
@@ -12,6 +14,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -19,13 +22,18 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import static org.hamcrest.Matchers.*;
 import static org.junit.Assert.assertThat;
-import static com.example.FileQueueService.BASE_PATH;
 
-public class FileQueueServiceTest {
+public class FileQueueServiceTest extends BaseTestClass {
 
-	private UniversalSequenceGenerator sequence = new UniversalSequenceGenerator();
+	private static String BASE_PATH;
+	private UniversalUniqueIdGenerator sequence = new UniversalUniqueIdGenerator();
 	private QueueService queueService;
 	private final String qUrlBase = "https://sqs.amazonaws.com/373529781950/";
+
+	@BeforeClass
+	public static void beforeAll() {
+		BASE_PATH = System.getProperty("fileQueueService.basePath");
+	}
 
 	@Before
 	public void before() throws Exception {
@@ -78,6 +86,54 @@ public class FileQueueServiceTest {
 		assertThat(lines.get(1), containsString(body2));
 	}
 
+	@Test
+	public void pull_shouldRemoveTheRecordFromMessageAndAddToInvisibleMessage() {
+		String qName = "test-queue";
+		String body = "test message body";
+		queueService.push(qUrlBase + qName, body);
+
+		Optional<Message> message = queueService.pull(qUrlBase + qName);
+
+		assertThat(message.isPresent(), is(true));
+		assertThat(message.orElse(null).getBody(), equalTo(body));
+		assertThat(message.orElse(null).getMessageId(), not(isEmptyOrNullString()));
+		assertThat(message.orElse(null).getReceiptHandle(), not(isEmptyOrNullString()));
+		List<String> lines = readAllLines(Paths.get(BASE_PATH, qName, "invisibleMessages"));
+		assertThat(lines.size(), equalTo(1));
+		assertThat(lines.get(0), containsString(body));
+	}
+
+	@Test
+	public void pull_shouldReturnEmptyOptionalMessage_whenNoMessageInQueue() {
+		String qName = "test-queue";
+		String body = "test message body";
+		queueService.push(qUrlBase + qName, body);
+		queueService.pull(qUrlBase + qName);
+
+		Optional<Message> message = queueService.pull(qUrlBase + qName);
+
+		assertThat(message.isPresent(), equalTo(false));
+	}
+
+	@Test
+	public void pull_multipleMessage() {
+		String qName = "test-queue-1";
+		String body1 = "Im body 1";
+		String body2 = "I'm body 2";
+		queueService.push(qUrlBase + qName, body1);
+		queueService.push(qUrlBase + qName, body2);
+
+		Optional<Message> msg1 = queueService.pull(qUrlBase + qName);
+		Optional<Message> msg2 = queueService.pull(qUrlBase + qName);
+		Optional<Message> msg3 = queueService.pull(qUrlBase + qName);
+
+		assertThat(msg1.isPresent(), equalTo(true));
+		assertThat(msg1.orElse(null).getBody(), equalTo(body1));
+		assertThat(msg2.isPresent(), equalTo(true));
+		assertThat(msg2.orElse(null).getBody(), equalTo(body2));
+		assertThat(msg3.isPresent(), is(false));
+	}
+
 	private void deleteAllSubDirectories(Path dirPath) throws Exception {
 		Files.list(dirPath)
 				.map(Path::toFile)
@@ -100,13 +156,10 @@ public class FileQueueServiceTest {
 
 	@Ignore
 	@Test
-	public void push_test() throws InterruptedException {
-		Runnable fileLockTest = () -> {
-
-			queueService.push(qUrlBase + "qUrl", "test message");
-		};
-		ExecutorService service = Executors.newFixedThreadPool(5);
-		IntStream.rangeClosed(1, 10).parallel().forEach(i -> service.execute(fileLockTest));
+	public void test_withMultipleThreads() throws InterruptedException {
+		Runnable fileLockTest = () -> queueService.push(qUrlBase + "test-queue", "test message");
+		ExecutorService service = Executors.newFixedThreadPool(2);
+		IntStream.rangeClosed(1, 10).parallel().peek(System.out::println).forEach(i -> service.execute(fileLockTest));
 		service.awaitTermination(10, TimeUnit.SECONDS);
 	}
 }

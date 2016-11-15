@@ -18,7 +18,7 @@ import static org.hamcrest.Matchers.*;
 import static org.junit.Assert.assertThat;
 
 @RunWith(value = Parameterized.class)
-public class QueueServiceVisibilityTimeoutTest {
+public class QueueServiceVisibilityTimeoutTest extends BaseTestClass {
 
 	@Parameterized.Parameters
 	public static Collection<String> getParameters() {

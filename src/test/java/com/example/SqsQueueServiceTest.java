@@ -19,7 +19,7 @@ import static org.junit.Assert.assertThat;
 import static org.mockito.Mockito.*;
 
 @RunWith(MockitoJUnitRunner.class)
-public class SqsQueueServiceTest {
+public class SqsQueueServiceTest extends BaseTestClass {
 
 	private SqsQueueService queueService;
 

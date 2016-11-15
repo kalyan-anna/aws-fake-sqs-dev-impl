@@ -13,7 +13,7 @@ import java.util.concurrent.ScheduledFuture;
 import static org.hamcrest.Matchers.*;
 import static org.junit.Assert.assertThat;
 
-public class InMemoryQueueServiceTest {
+public class InMemoryQueueServiceTest extends BaseTestClass {
 
 	private QueueService queueService;
 	private ConcurrentHashMap<String, ConcurrentLinkedDeque<Message>> messageStore;
@@ -44,7 +44,7 @@ public class InMemoryQueueServiceTest {
 		String inputMessageBody = "Message Body";
 		queueService.push(qUrlBase + qName, inputMessageBody);
 		assertThat(messageStore.get(qName).peek().getBody(), equalTo(inputMessageBody));
-		assertThat(messageStore.get(qName).peek().getMessageId(), notNullValue());
+		assertThat(messageStore.get(qName).peek().getMessageId(), not(isEmptyOrNullString()));
 	}
 
 	@Test(expected = IllegalArgumentException.class)
@@ -102,8 +102,8 @@ public class InMemoryQueueServiceTest {
 
 		assertThat(message.isPresent(), is(true));
 		assertThat(message.orElse(null).getBody(), equalTo(inputBody));
-		assertThat(message.orElse(null).getReceiptHandle(), notNullValue());
-		assertThat(message.orElse(null).getMessageId(), notNullValue());
+		assertThat(message.orElse(null).getReceiptHandle(), not(isEmptyOrNullString()));
+		assertThat(message.orElse(null).getMessageId(), not(isEmptyOrNullString()));
 	}
 
 	@Test
@@ -115,7 +115,8 @@ public class InMemoryQueueServiceTest {
 		Optional<Message> message = queueService.pull(qUrlBase + qName);
 
 		assertThat(messageStore.get(qName).isEmpty(), is(true));
-		assertThat(invisibleMessageStore.get(qName).get(message.orElse(null).getMessageId()), notNullValue());
+		Message invisibleMessage = invisibleMessageStore.get(qName).get(message.orElse(null).getMessageId());
+		assertThat(invisibleMessage, notNullValue());
 	}
 
 	@Test

@@ -2,3 +2,4 @@
 *.iml
 target/
 canva-test/*
+canva-unit-test/*

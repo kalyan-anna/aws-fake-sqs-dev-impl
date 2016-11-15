@@ -2,6 +2,7 @@ package com.example;
 
 import com.amazonaws.services.sqs.model.Message;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
@@ -12,9 +13,13 @@ import static org.hamcrest.Matchers.*;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Optional;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.IntStream;
 
 @RunWith(value = Parameterized.class)
-public class QueueServiceTest {
+public class QueueServiceTest extends BaseTestClass {
 
 	@Parameterized.Parameters
 	public static Collection<String> getParameters() {
@@ -113,5 +118,14 @@ public class QueueServiceTest {
 		assertThat(msg4.orElse(null).getBody(), equalTo(body3));
 
 		queueService.delete(qUrl2, msg4.orElse(null).getReceiptHandle());
+	}
+
+	@Ignore
+	@Test
+	public void testWithMultipleThreads() throws InterruptedException {
+		Runnable push = () -> queueService.push(qUrlBase + "test-queue", "test message");
+		ExecutorService service = Executors.newFixedThreadPool(2);
+		IntStream.rangeClosed(1, 10).parallel().forEach(i -> service.execute(push));
+		service.awaitTermination(10, TimeUnit.SECONDS);
 	}
 }

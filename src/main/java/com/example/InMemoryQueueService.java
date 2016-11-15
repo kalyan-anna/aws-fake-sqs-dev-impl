@@ -86,7 +86,7 @@ class InMemoryQueueService implements QueueService {
 		Message message = messageStore.get(qName).poll().clone();
 		String receiptHandle = "MSG-ID-" + message.getMessageId() + "-RH-" + UUID.randomUUID().toString();
 		message.setReceiptHandle(receiptHandle);
-		addMessageToInvisibleStore(qName, message);
+		addToInvisibleStore(qName, message);
 
 		ScheduledFuture future = executorService.schedule(() -> {
 			invisibleMessageStore.get(qName).remove(message.getMessageId());
@@ -98,7 +98,7 @@ class InMemoryQueueService implements QueueService {
 		return Optional.of(message);
 	}
 
-	private void addMessageToInvisibleStore(String qName, Message message) {
+	private void addToInvisibleStore(String qName, Message message) {
 		invisibleMessageStore.putIfAbsent(qName,  new ConcurrentHashMap<>());
 		invisibleMessageStore.get(qName).put(message.getMessageId(), message);
 	}

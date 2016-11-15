@@ -4,21 +4,32 @@ import org.apache.commons.lang3.StringUtils;
 import static org.apache.commons.lang3.StringUtils.*;
 import org.apache.commons.lang3.math.NumberUtils;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+
 import static org.hamcrest.Matchers.*;
-import static com.example.UniversalSequenceGenerator.*;
+import static com.example.UniversalUniqueIdGenerator.*;
 
 import static org.junit.Assert.*;
 
-public class UniversalSequenceGeneratorTest {
+public class UniversalUniqueIdGeneratorTest extends BaseTestClass {
 
-	private UniversalSequenceGenerator sequence;
+	private UniversalUniqueIdGenerator sequence;
+	private static Path SEQUENCE_FILE_PATH;
+
+	@BeforeClass
+	public static void beforeAll() {
+		String basePath = System.getProperty("fileQueueService.basePath");
+		SEQUENCE_FILE_PATH = Paths.get(basePath, "sequence");
+	}
 
 	@Before
 	public void before() {
-		sequence = new UniversalSequenceGenerator();
+		sequence = new UniversalUniqueIdGenerator();
 	}
 
 	@Test

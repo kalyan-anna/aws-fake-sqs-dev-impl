@@ -36,7 +36,8 @@ import java.util.concurrent.TimeUnit;
  */
 class InMemoryQueueService implements QueueService {
 
-	private static final int VISIBILITY_TIMEOUT_SEC = 30;
+	private static final int VISIBILITY_TIMEOUT = Integer.valueOf(System.getProperty("visibility.timeout.sec"));
+	private static final int POOL_SIZE = Integer.valueOf(System.getProperty("scheduled.task.thread.pool.size"));
 
 	private ConcurrentHashMap<String, ConcurrentLinkedDeque<Message>> messageStore;
 	private ConcurrentHashMap<String, ConcurrentHashMap<String, Message>> invisibleMessageStore;
@@ -46,7 +47,7 @@ class InMemoryQueueService implements QueueService {
 
 	InMemoryQueueService() {
 		this(new ConcurrentHashMap<>(), new ConcurrentHashMap<>(),
-						new ConcurrentHashMap<>(), Executors.newScheduledThreadPool(5));
+						new ConcurrentHashMap<>(), Executors.newScheduledThreadPool(POOL_SIZE));
 	}
 
 	InMemoryQueueService(ConcurrentHashMap<String, ConcurrentLinkedDeque<Message>> messageStore,
@@ -91,8 +92,8 @@ class InMemoryQueueService implements QueueService {
 		ScheduledFuture future = executorService.schedule(() -> {
 			invisibleMessageStore.get(qName).remove(message.getMessageId());
 			messageStore.get(qName).addFirst(message);
-			scheduledTaskStore.remove(message.getMessageId());
-		}, VISIBILITY_TIMEOUT_SEC, TimeUnit.SECONDS);
+			scheduledTaskStore.get(qName).remove(message.getMessageId());
+		}, VISIBILITY_TIMEOUT, TimeUnit.SECONDS);
 
 		addToScheduledTaskStore(qName, message.getMessageId(), future);
 		return Optional.of(message);

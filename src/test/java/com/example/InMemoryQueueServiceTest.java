@@ -28,7 +28,7 @@ public class InMemoryQueueServiceTest extends BaseTestClass {
 		invisibleMessageStore = new ConcurrentHashMap<>();
 		scheduledTaskStore = new ConcurrentHashMap<>();
 		queueService = new InMemoryQueueService(messageStore, invisibleMessageStore,
-				scheduledTaskStore, Executors.newScheduledThreadPool(5));
+				scheduledTaskStore, Executors.newScheduledThreadPool(3));
 	}
 
 	@Test

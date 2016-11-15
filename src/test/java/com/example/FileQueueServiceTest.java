@@ -15,8 +15,10 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -29,6 +31,7 @@ public class FileQueueServiceTest extends BaseTestClass {
 	private UniversalUniqueIdGenerator sequence = new UniversalUniqueIdGenerator();
 	private QueueService queueService;
 	private final String qUrlBase = "https://sqs.amazonaws.com/373529781950/";
+	private ConcurrentHashMap<String, ConcurrentHashMap<String, ScheduledFuture<?>>> scheduledTaskStore;
 
 	@BeforeClass
 	public static void beforeAll() {
@@ -37,7 +40,8 @@ public class FileQueueServiceTest extends BaseTestClass {
 
 	@Before
 	public void before() throws Exception {
-		this.queueService = new FileQueueService(sequence);
+		this.scheduledTaskStore = new ConcurrentHashMap<>();
+		this.queueService = new FileQueueService(sequence, Executors.newScheduledThreadPool(3), scheduledTaskStore);
 		deleteAllSubDirectories(Paths.get(BASE_PATH));
 	}
 
@@ -132,6 +136,18 @@ public class FileQueueServiceTest extends BaseTestClass {
 		assertThat(msg2.isPresent(), equalTo(true));
 		assertThat(msg2.orElse(null).getBody(), equalTo(body2));
 		assertThat(msg3.isPresent(), is(false));
+	}
+
+	@Test
+	public void pull_shouldSubmitScheduledTaskForVisibilityTimeout() {
+		String qName = "test-queue";
+		String body = "test message body";
+		queueService.push(qUrlBase + qName, body);
+		Optional<Message> message = queueService.pull(qUrlBase + qName);
+
+		ScheduledFuture task = scheduledTaskStore.get(qName).get(message.orElse(null).getMessageId());
+		assertThat(task, notNullValue());
+		assertThat(task.isCancelled(), is(false));
 	}
 
 	private void deleteAllSubDirectories(Path dirPath) throws Exception {

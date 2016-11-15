@@ -18,7 +18,7 @@ import static org.junit.Assert.*;
 
 public class UniversalUniqueIdGeneratorTest extends BaseTestClass {
 
-	private UniversalUniqueIdGenerator sequence;
+	private UniversalUniqueIdGenerator idGenerator;
 	private static Path SEQUENCE_FILE_PATH;
 
 	@BeforeClass
@@ -29,20 +29,20 @@ public class UniversalUniqueIdGeneratorTest extends BaseTestClass {
 
 	@Before
 	public void before() {
-		sequence = new UniversalUniqueIdGenerator();
+		idGenerator = new UniversalUniqueIdGenerator();
 	}
 
 	@Test
 	public void nextValue_shouldReturnTheValueInSequenceFile() throws Exception {
 		Long currentSequenceNumberInFile = currentSequenceNumberInFile();
-		String nextValue = sequence.nextValue();
+		String nextValue = idGenerator.nextValue();
 		assertThat(substringBefore(nextValue, "-sq-"), equalTo(currentSequenceNumberInFile.toString()));
 	}
 
 	@Test
 	public void nextValue_shouldIncrementFileSequenceAfterReading() throws Exception {
 		Long firstRead = currentSequenceNumberInFile();
-		sequence.nextValue();
+		idGenerator.nextValue();
 		Long secondRead = currentSequenceNumberInFile();
 		assertThat(secondRead, equalTo(firstRead + TOTAL_CACHE));
 	}

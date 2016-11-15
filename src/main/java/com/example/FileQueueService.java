@@ -8,6 +8,11 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import static java.nio.file.StandardOpenOption.*;
@@ -15,17 +20,29 @@ import static org.apache.commons.lang3.StringUtils.*;
 
 class FileQueueService implements QueueService {
 
-	private final String BASE_PATH;
-	private final String UNIVERSAL_LOCK;
-	private final String NEW_LINE = System.getProperty("line.separator");
+	private static final String BASE_PATH = System.getProperty("fileQueueService.basePath");
+	private static final String UNIVERSAL_LOCK = BASE_PATH + "/universal-lock";
+	private static final String NEW_LINE = System.getProperty("line.separator");
+	private static final int VISIBILITY_TIMEOUT = Integer.valueOf(System.getProperty("visibility.timeout.sec"));
+	private static final int POOL_SIZE = Integer.valueOf(System.getProperty("scheduled.task.thread.pool.size"));
+
+	static {
+		setupBaseDirIfAbsent(BASE_PATH);
+	}
 
 	private UniversalUniqueIdGenerator idGenerator;
+	private ScheduledExecutorService executorService;
+	private ConcurrentHashMap<String, ConcurrentHashMap<String, ScheduledFuture<?>>> scheduledTaskStore;
 
 	FileQueueService(UniversalUniqueIdGenerator idGenerator) {
+		this(idGenerator, Executors.newScheduledThreadPool(POOL_SIZE), new ConcurrentHashMap<>());
+	}
+
+	FileQueueService(UniversalUniqueIdGenerator idGenerator, ScheduledExecutorService executorService,
+			ConcurrentHashMap<String, ConcurrentHashMap<String, ScheduledFuture<?>>> scheduledTaskStore) {
 		this.idGenerator = idGenerator;
-		this.BASE_PATH = System.getProperty("fileQueueService.basePath");
-		this.UNIVERSAL_LOCK = BASE_PATH + "/universal-lock";
-		setupBaseDirIfAbsent(BASE_PATH);
+		this.executorService = executorService;
+		this.scheduledTaskStore = scheduledTaskStore;
 	}
 
 	static void setupBaseDirIfAbsent(String basePath) {
@@ -50,10 +67,10 @@ class FileQueueService implements QueueService {
 
 		setupQueueDirectoryIfAbsent(qName);
 		String messageId = idGenerator.nextValue();
-		addMessageToQueue(qName, messageId, messageBody);
+		addMessageToQueueFile(qName, messageId, messageBody);
 	}
 
-	private void addMessageToQueue(String qName, String messageId, String body) {
+	private void addMessageToQueueFile(String qName, String messageId, String body) {
 		String record = toRecord(messageId, "", body) + NEW_LINE;
 		Path messagePath = Paths.get(BASE_PATH, qName, "messages");
 		lockQ(qName);
@@ -73,18 +90,25 @@ class FileQueueService implements QueueService {
 		}
 		String qName = fromQueueUrl(qUrl);
 
-		Optional<Message> message = pollQueue(qName);
+		Optional<Message> message = pollMessageFromQueueFile(qName);
 		if(!message.isPresent()) {
 			return Optional.empty();
 		}
 		String receiptHandle = "MSG-ID-" + message.get().getMessageId() + "-RH-" + idGenerator.nextValue();
 		message.get().setReceiptHandle(receiptHandle);
+		addMessageToInvisibleFile(qName, message.get());
 
-		addToInvisible(qName, message.get());
+		ScheduledFuture future = executorService.schedule(() -> {
+			Message msg = pullFromInvisible(qName, message.get().getMessageId());
+			addFirstToQueueFile(qName, msg);
+			scheduledTaskStore.get(qName).remove(message.get().getMessageId());
+		}, VISIBILITY_TIMEOUT, TimeUnit.SECONDS);
+
+		addToScheduledTaskStore(qName, message.get().getMessageId(), future);
 		return message;
 	}
 
-	private Optional<Message> pollQueue(String qName) {
+	private Optional<Message> pollMessageFromQueueFile(String qName) {
 		Path messagePath = Paths.get(BASE_PATH, qName, "messages");
 		lockQ(qName);
 		try (Stream<String> stream = Files.lines(messagePath)) {
@@ -102,9 +126,9 @@ class FileQueueService implements QueueService {
 		}
 	}
 
-	private void addToInvisible(String qName, Message message) {
+	private void addMessageToInvisibleFile(String qName, Message message) {
 		Path invisiblePath = Paths.get(BASE_PATH, qName, "invisibleMessages");
-		String record = toRecord(message.getMessageId(), message.getReceiptHandle(), message.getBody()) + NEW_LINE;
+		String record = toRecord(message) + NEW_LINE;
 		lockQ(qName);
 		try  {
 			Files.write(invisiblePath, record.getBytes(), APPEND);
@@ -115,18 +139,57 @@ class FileQueueService implements QueueService {
 		}
 	}
 
-	private Message toMessage(String record) {
-		String[] fields = record.split(":::");
-		return new Message().withMessageId(fields[0]).withReceiptHandle(fields[1]).withBody(fields[2]);
+	private void addToScheduledTaskStore(String qName, String messageId, ScheduledFuture scheduledFuture) {
+		scheduledTaskStore.putIfAbsent(qName, new ConcurrentHashMap<>());
+		scheduledTaskStore.get(qName).put(messageId, scheduledFuture);
 	}
 
-	private String toRecord(String messageId, String receiptHandler, String body) {
-		return messageId + ":::" + receiptHandler + ":::" + body;
+	private Message pullFromInvisible(String qName, String messageId) {
+		Path invisiblePath = Paths.get(BASE_PATH, qName, "invisibleMessages");
+		lockQ(qName);
+		try (Stream<String> stream = Files.lines(invisiblePath)) {
+			Optional<String> record = stream.filter(line -> line.split(":::")[0].equals(messageId)).findFirst();
+			List<String> remainingLines = stream.parallel().filter(line -> !line.split(":::")[0].equals(messageId))
+												.collect(Collectors.toList());
+			Files.write(invisiblePath, remainingLines);
+			return toMessage(record.orElse(""));
+		} catch (IOException e) {
+			throw new RuntimeException(e);
+		} finally {
+			unlockQ(qName);
+		}
+	}
+
+	private void addFirstToQueueFile(String qName, Message message) {
+		Path messagePath = Paths.get(BASE_PATH, qName, "messages");
+		lockQ(qName);
+		try (Stream<String> stream = Files.lines(messagePath)) {
+			List<String> lines = stream.collect(Collectors.toList());
+			lines.add(0, toRecord(message));
+			Files.write(messagePath, lines);
+		} catch (IOException e) {
+			throw new RuntimeException(e);
+		} finally {
+			unlockQ(qName);
+		}
 	}
 
 	@Override
 	public void delete(String qUrl, String receiptHandler) {
 
+	}
+
+	private Message toMessage(String record) {
+		String[] fields = record.split(":::");
+		return new Message().withMessageId(fields[0]).withReceiptHandle(fields[1]).withBody(fields[2]);
+	}
+
+	private String toRecord(Message message) {
+		return toRecord(message.getMessageId(), message.getReceiptHandle(), message.getBody());
+	}
+
+	private String toRecord(String messageId, String receiptHandler, String body) {
+		return messageId + ":::" + receiptHandler + ":::" + body;
 	}
 
 	private void setupQueueDirectoryIfAbsent(String qName) {

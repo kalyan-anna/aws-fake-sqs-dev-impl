@@ -26,10 +26,11 @@ import static org.apache.commons.lang3.StringUtils.*;
  * 	- "message" file is used to store incoming messages
  * 	- "invisibleMessage" file is used to store the messages that are pulled and waiting to be deleted
  *
+ *  Pull request moves first record in "message" to "invisibleMessage" file.
+ *
  * 	This service also maintains an in-memory scheduledTaskStore and holds active visibility timeout tasks.
  *
  * 	Every push, pull or delete request locks the queue to keep the implementation simple.
- * 	Pull request removes first record in "message" file and moves it to "invisibleMessage" file.
  */
 class FileQueueService implements QueueService {
 

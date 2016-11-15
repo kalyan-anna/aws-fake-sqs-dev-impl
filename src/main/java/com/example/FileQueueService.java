@@ -99,13 +99,13 @@ class FileQueueService implements QueueService {
 		message.get().setReceiptHandle(receiptHandle);
 		addMessageToInvisibleFile(qName, message.get());
 
-		ScheduledFuture msgVisibilityTimeoutTask = executorService.schedule(() -> {
+		ScheduledFuture visibilityTimeoutTask = executorService.schedule(() -> {
 			Message msg = pullFromInvisibleFile(qName, message.get().getMessageId());
 			addFirstToQueueFile(qName, msg);
 			scheduledTaskStore.get(qName).remove(message.get().getMessageId());
 		}, VISIBILITY_TIMEOUT, TimeUnit.SECONDS);
 
-		addToScheduledTaskStore(qName, message.get().getMessageId(), msgVisibilityTimeoutTask);
+		addToScheduledTaskStore(qName, message.get().getMessageId(), visibilityTimeoutTask);
 		return message;
 	}
 

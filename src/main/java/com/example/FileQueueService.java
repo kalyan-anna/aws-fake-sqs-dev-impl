@@ -80,20 +80,7 @@ class FileQueueService implements QueueService {
 
 		setupQueueDirectoryIfAbsent(qName);
 		String messageId = idGenerator.nextValue();
-		addMessageToQueueFile(qName, messageId, messageBody);
-	}
-
-	private void addMessageToQueueFile(String qName, String messageId, String body) {
-		String record = toRecord(messageId, "", body) + NEW_LINE;
-		Path messagePath = Paths.get(BASE_PATH, qName, "messages");
-		lockQ(qName);
-		try {
-			Files.write(messagePath, record.getBytes(), APPEND);
-		} catch (IOException e) {
-			throw new RuntimeException(e);
-		} finally {
-			unlockQ(qName);
-		}
+		addMessageToQueue(qName, messageId, messageBody);
 	}
 
 	@Override
@@ -103,7 +90,7 @@ class FileQueueService implements QueueService {
 		}
 		String qName = fromQueueUrl(qUrl);
 
-		Optional<Message> message = pollMessageFromQueueFile(qName);
+		Optional<Message> message = pollMessageFromQueue(qName);
 		if(!message.isPresent()) {
 			return Optional.empty();
 		}
@@ -121,7 +108,38 @@ class FileQueueService implements QueueService {
 		return message;
 	}
 
-	private Optional<Message> pollMessageFromQueueFile(String qName) {
+	@Override
+	public void delete(String qUrl, String receiptHandler) {
+		if(isBlank(qUrl) || isBlank(receiptHandler)) {
+			throw new IllegalArgumentException("Invalid qUrl or receiptHandler");
+		}
+		String qName = fromQueueUrl(qUrl);
+
+		String messageId = fromReceiptHandler(receiptHandler);
+		if(scheduledTaskStore.get(qName).get(messageId) == null) {
+			System.out.println("Scheduled task unavailable. Visibility timeout might have been executed. "
+					+ "Message with handler " + receiptHandler + " may not be available for deletion");
+			return;
+		}
+		scheduledTaskStore.get(qName).get(messageId).cancel(false);
+		scheduledTaskStore.get(qName).remove(messageId);
+		pullFromInvisibleFile(qName, messageId);
+	}
+
+	private void addMessageToQueue(String qName, String messageId, String body) {
+		String record = toRecord(messageId, "", body) + NEW_LINE;
+		Path messagePath = Paths.get(BASE_PATH, qName, "messages");
+		lockQ(qName);
+		try {
+			Files.write(messagePath, record.getBytes(), APPEND);
+		} catch (IOException e) {
+			throw new RuntimeException(e);
+		} finally {
+			unlockQ(qName);
+		}
+	}
+
+	private Optional<Message> pollMessageFromQueue(String qName) {
 		Path messagePath = Paths.get(BASE_PATH, qName, "messages");
 		lockQ(qName);
 		try (Stream<String> stream = Files.lines(messagePath)) {
@@ -169,24 +187,6 @@ class FileQueueService implements QueueService {
 		} finally {
 			unlockQ(qName);
 		}
-	}
-
-	@Override
-	public void delete(String qUrl, String receiptHandler) {
-		if(isBlank(qUrl) || isBlank(receiptHandler)) {
-			throw new IllegalArgumentException("Invalid qUrl or receiptHandler");
-		}
-		String qName = fromQueueUrl(qUrl);
-
-		String messageId = fromReceiptHandler(receiptHandler);
-		if(scheduledTaskStore.get(qName).get(messageId) == null) {
-			System.out.println("Scheduled task unavailable. Visibility timeout might have been executed. "
-					+ "Message with handler " + receiptHandler + " may not be available for deletion");
-			return;
-		}
-		scheduledTaskStore.get(qName).get(messageId).cancel(false);
-		scheduledTaskStore.get(qName).remove(messageId);
-		pullFromInvisibleFile(qName, messageId);
 	}
 
 	private String fromReceiptHandler(String receiptHandler) {

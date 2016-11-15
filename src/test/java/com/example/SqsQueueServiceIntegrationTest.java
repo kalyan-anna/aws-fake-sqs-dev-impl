@@ -19,8 +19,10 @@ import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertThat;
 
 /*
-This integration tests can be turned on if it is a separate project on its own
- */
+* This integration tests can be turned on if it is a separate project on its own.
+*
+* I created this test to play around with amazon sqs and familiarize my understanding
+*/
 @Ignore
 public class SqsQueueServiceIntegrationTest extends BaseTestClass {
 

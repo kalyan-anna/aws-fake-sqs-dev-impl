@@ -13,9 +13,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledFuture;
 import java.util.stream.Collectors;
 import static org.hamcrest.Matchers.*;
 import static org.junit.Assert.assertThat;
@@ -26,12 +23,10 @@ public class FileQueueServiceTest extends BaseTestClass {
 	private UniversalUniqueIdGenerator sequence = new UniversalUniqueIdGenerator();
 	private QueueService queueService;
 	private final String qUrlBase = "https://sqs.amazonaws.com/373529781950/";
-	private ConcurrentHashMap<String, ConcurrentHashMap<String, ScheduledFuture<?>>> scheduledTaskStore;
 
 	@Before
 	public void before() throws Exception {
-		this.scheduledTaskStore = new ConcurrentHashMap<>();
-		this.queueService = new FileQueueService(sequence, Executors.newScheduledThreadPool(3), scheduledTaskStore);
+		this.queueService = new FileQueueService(sequence);
 		deleteAllSubDirectories(Paths.get(BASE_PATH));
 	}
 
@@ -50,7 +45,7 @@ public class FileQueueServiceTest extends BaseTestClass {
 
 		queueService.push(qUrlBase + qName, body);
 
-		List<String> lines = readAllLines(Paths.get(BASE_PATH, qName, "messages"));
+		List<String> lines = readAllLinesFromQueue(qName);
 		assertThat(lines.size(), equalTo(1));
 		assertThat(lines.get(0), containsString(body));
 	}
@@ -64,81 +59,126 @@ public class FileQueueServiceTest extends BaseTestClass {
 		queueService.push(qUrlBase + qName, body1);
 		queueService.push(qUrlBase + qName, body2);
 
-		List<String> lines = readAllLines(Paths.get(BASE_PATH, qName, "messages"));
+		List<String> lines = readAllLinesFromQueue(qName);
 		assertThat(lines.size(), equalTo(2));
 		assertThat(lines.get(0), containsString(body1));
 		assertThat(lines.get(1), containsString(body2));
 	}
 
 	@Test
-	public void pull_shouldRemoveTheRecordFromMessageAndAddToInvisibleMessage() {
+	public void pull_shouldReturnMessageInFile() {
 		String qName = "test-queue";
-		String body = "test message body";
-		queueService.push(qUrlBase + qName, body);
-
-		Optional<Message> message = queueService.pull(qUrlBase + qName);
-
-		assertThat(message.isPresent(), is(true));
-		assertThat(message.orElse(null).getBody(), equalTo(body));
-		assertThat(message.orElse(null).getMessageId(), not(isEmptyOrNullString()));
-		assertThat(message.orElse(null).getReceiptHandle(), not(isEmptyOrNullString()));
-		List<String> lines = readAllLines(Paths.get(BASE_PATH, qName, "invisibleMessages"));
-		assertThat(lines.size(), equalTo(1));
-		assertThat(lines.get(0), containsString(body));
+		String body1 = "Test Message body 1";
+		queueService.push(qUrlBase + qName, body1);
+		Message message = queueService.pull(qUrlBase + qName).orElse(null);
+		String[] fields = readAllLinesFromQueue(qName).get(0).split("::");
+		assertThat(fields[0], equalTo(message.getMessageId()));
+		assertThat(fields[3], equalTo(message.getReceiptHandle()));
+		assertThat(fields[4], equalTo(message.getBody()));
 	}
 
 	@Test
-	public void pull_shouldReturnEmptyOptionalMessage_whenNoMessageInQueue() {
+	public void pull_shouldIncreaseVisibilityFieldInFile() {
 		String qName = "test-queue";
-		String body = "test message body";
-		queueService.push(qUrlBase + qName, body);
+		String body1 = "Test Message body 1";
+		queueService.push(qUrlBase + qName, body1);
+		String[] fieldsBeforePush = readAllLinesFromQueue(qName).get(0).split("::");
+
+		queueService.pull(qUrlBase + qName).orElse(null);
+		String[] fieldsAfterPush = readAllLinesFromQueue(qName).get(0).split("::");
+
+		assertThat(Long.parseLong(fieldsBeforePush[1]), lessThan(Long.parseLong(fieldsAfterPush[1])));
+	}
+
+	@Test
+	public void pull_shouldIgnoreInvisibleMessages() {
+		String qName = "test-queue";
+		String body1 = "Test Message body 1";
+		String body2 = "Test Message body 2";
+		queueService.push(qUrlBase + qName, body1);
 		queueService.pull(qUrlBase + qName);
+		queueService.push(qUrlBase + qName, body2);
+		Message message = queueService.pull(qUrlBase + qName).orElse(null);
+		assertThat(message.getBody(), equalTo(body2));
+	}
 
+	@Test
+	public void pull_shouldReturnEmptyMessage_whenNoMessage() {
+		String qName = "test-queue";
 		Optional<Message> message = queueService.pull(qUrlBase + qName);
-
 		assertThat(message.isPresent(), equalTo(false));
 	}
 
 	@Test
-	public void pull_multipleMessage() {
-		String qName = "test-queue-1";
-		String body1 = "Im body 1";
-		String body2 = "I'm body 2";
+	public void pull_shouldReturnEmpty_whenNoVisibleMessage() {
+		String qName = "test-queue";
+		String body1 = "Test Message body 1";
+		String body2 = "Test Message body 2";
 		queueService.push(qUrlBase + qName, body1);
 		queueService.push(qUrlBase + qName, body2);
-
-		Optional<Message> msg1 = queueService.pull(qUrlBase + qName);
-		Optional<Message> msg2 = queueService.pull(qUrlBase + qName);
-		Optional<Message> msg3 = queueService.pull(qUrlBase + qName);
-
-		assertThat(msg1.isPresent(), equalTo(true));
-		assertThat(msg1.orElse(null).getBody(), equalTo(body1));
-		assertThat(msg2.isPresent(), equalTo(true));
-		assertThat(msg2.orElse(null).getBody(), equalTo(body2));
-		assertThat(msg3.isPresent(), is(false));
-	}
-
-	@Test
-	public void pull_shouldSubmitScheduledTaskForVisibilityTimeout() {
-		String qName = "test-queue";
-		String body = "test message body";
-		queueService.push(qUrlBase + qName, body);
+		queueService.pull(qUrlBase + qName);
+		queueService.pull(qUrlBase + qName);
 		Optional<Message> message = queueService.pull(qUrlBase + qName);
-
-		ScheduledFuture task = scheduledTaskStore.get(qName).get(message.orElse(null).getMessageId());
-		assertThat(task, notNullValue());
-		assertThat(task.isCancelled(), is(false));
+		assertThat(message.isPresent(), equalTo(false));
 	}
 
 	@Test
-	public void delete_shouldRemoveRecordFromInvisibleFile(){
+	public void delete_shouldRemoveRecordFromFile(){
 		String qName = "test-queue";
 		String body = "test message body";
 		queueService.push(qUrlBase + qName, body);
 		Optional<Message> message = queueService.pull(qUrlBase + qName);
 		queueService.delete(qUrlBase + qName, message.orElse(null).getReceiptHandle());
-		List<String> lines = readAllLines(Paths.get(BASE_PATH, qName, "invisibleMessages"));
+
+		List<String> lines = readAllLinesFromQueue(qName);
 		assertThat(lines.isEmpty(), is(true));
+	}
+
+	@Test
+	public void delete_shouldRemoveRecordFromFile_multipleMessageScenario(){
+		String qName = "test-queue";
+		String body1 = "test message body";
+		String body2 = "test message body 2";
+
+		queueService.push(qUrlBase + qName, body1);
+		Message msg1 = queueService.pull(qUrlBase + qName).orElse(null);
+
+		queueService.push(qUrlBase + qName, body2);
+		Optional<Message> msg2 = queueService.pull(qUrlBase + qName);
+
+		queueService.delete(qUrlBase + qName, msg2.orElse(null).getReceiptHandle());
+
+		List<String> lines = readAllLinesFromQueue(qName);
+		assertThat(lines.size(), is(1));
+		String[] fields = lines.get(0).split("::");
+		assertThat(fields[0], equalTo(msg1.getMessageId()));
+		assertThat(fields[3], equalTo(msg1.getReceiptHandle()));
+		assertThat(fields[4], equalTo(msg1.getBody()));
+	}
+
+	@Test
+	public void pull_visibilityTimeoutRecord_shouldBeAvailable() {
+		String qName = "test-queue";
+		String body1 = "test message body";
+		String body2 = "test message body 2";
+		String body3 = "test message body 3";
+		queueService.push(qUrlBase + qName, body1);
+		queueService.push(qUrlBase + qName, body2);
+		queueService.push(qUrlBase + qName, body3);
+
+		queueService.pull(qUrlBase + qName);
+		Message msg2 = ((FileQueueService)queueService).pull(qUrlBase + qName, 0).orElse(null);
+		Message msg2_2nd = queueService.pull(qUrlBase + qName).orElse(null);
+		assertThat(msg2_2nd.getMessageId(), equalTo(msg2.getMessageId()));
+		assertThat(msg2_2nd.getBody(), equalTo(msg2.getBody()));
+		assertThat(msg2_2nd.getBody(), equalTo(body2));
+		assertThat(msg2_2nd.getReceiptHandle(), not(equalTo(msg2.getReceiptHandle())));
+
+		Message msg3 = queueService.pull(qUrlBase + qName).orElse(null);
+		assertThat(msg3.getBody(), equalTo(body3));
+
+		Optional<Message> msg4 = queueService.pull(qUrlBase + qName);
+		assertThat(msg4.isPresent(), equalTo(false));
 	}
 
 	static void deleteAllSubDirectories(Path dirPath) throws Exception {
@@ -153,9 +193,10 @@ public class FileQueueServiceTest extends BaseTestClass {
 		FileUtils.deleteDirectory(qPath.toFile());
 	}
 
-	private List<String> readAllLines(Path path) {
+	private List<String> readAllLinesFromQueue(String qName) {
+		Path messagePath = Paths.get(BASE_PATH, qName, "messages");
 		try {
-			return Files.lines(path).filter(StringUtils::isNotBlank).collect(Collectors.toList());
+			return Files.lines(messagePath).filter(StringUtils::isNotBlank).collect(Collectors.toList());
 		} catch (IOException e) {
 			throw new RuntimeException(e);
 		}

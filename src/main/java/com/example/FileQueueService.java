@@ -8,54 +8,27 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import static java.nio.file.StandardOpenOption.*;
 
-/**
- * FileQueueService creates separate folder for each queue based on queueName and maintains two files
- * 	- "message" file stores incoming messages in FIFO order
- * 	- "invisibleMessage" file is used to store the messages that are pulled and waiting to be deleted
- *
- *  Pull request moves first record in "message" to "invisibleMessage" file.
- *
- * 	This service also maintains an in-memory scheduledTaskStore and holds active visibility timeout tasks.
- *
- * 	Every push, pull or delete request locks the queue to keep the implementation simple.
- */
 class FileQueueService implements QueueService {
 
 	private static final String BASE_PATH = System.getProperty("fileQueueService.basePath");
 	private static final String UNIVERSAL_LOCK = BASE_PATH + "/universal-lock";
-	private static final String NEW_LINE = System.getProperty("line.separator");
-	private static final int VISIBILITY_TIMEOUT = Integer.valueOf(System.getProperty("visibility.timeout.sec"));
-	private static final int POOL_SIZE = Integer.valueOf(System.getProperty("scheduled.task.thread.pool.size"));
+	private static final int DEFAULT_VISIBILITY_TIMEOUT = Integer.valueOf(System.getProperty("visibility.timeout.sec"));
 
 	static {
 		setupBaseDirIfAbsent(BASE_PATH);
 	}
 
 	private UniversalUniqueIdGenerator idGenerator;
-	private ScheduledExecutorService executorService;
-	private ConcurrentHashMap<String, ConcurrentHashMap<String, ScheduledFuture<?>>> scheduledTaskStore;
 
 	FileQueueService(UniversalUniqueIdGenerator idGenerator) {
-		this(idGenerator, Executors.newScheduledThreadPool(POOL_SIZE), new ConcurrentHashMap<>());
-	}
-
-	FileQueueService(UniversalUniqueIdGenerator idGenerator, ScheduledExecutorService executorService,
-			ConcurrentHashMap<String, ConcurrentHashMap<String, ScheduledFuture<?>>> scheduledTaskStore) {
 		this.idGenerator = idGenerator;
-		this.executorService = executorService;
-		this.scheduledTaskStore = scheduledTaskStore;
 	}
 
 	static void setupBaseDirIfAbsent(String basePath) {
@@ -72,146 +45,95 @@ class FileQueueService implements QueueService {
 	}
 
 	@Override
-	public void push(String qUrl, String messageBody) {
+	public void push(String qUrl, String body) {
 		String qName = fromQueueUrl(qUrl);
 
 		setupQueueDirectoryIfAbsent(qName);
 		String messageId = idGenerator.nextValue();
-		addMessageToQueue(qName, messageId, messageBody);
+		lockQ(qName);
+		try {
+			appendRecordToFile(qName, Record.toRecord(messageId, body));
+		} finally {
+			unlockQ(qName);
+		}
+	}
+
+	private void appendRecordToFile(String qName, Record record) {
+		Path messagePath = Paths.get(BASE_PATH, qName, "messages");
+		try {
+			Files.write(messagePath, record.toLine().getBytes(), APPEND);
+		} catch (IOException e) {
+			throw new RuntimeException(e);
+		}
 	}
 
 	@Override
 	public Optional<Message> pull(String qUrl) {
-		String qName = fromQueueUrl(qUrl);
-
-		Optional<Message> message = pollMessageFromQueue(qName);
-		if(!message.isPresent()) {
-			return message;
-		}
-		String receiptHandle = "MSG-ID-" + message.get().getMessageId() + "-RH-" + idGenerator.nextValue();
-		message.get().setReceiptHandle(receiptHandle);
-		addMessageToInvisibleFile(qName, message.get());
-
-		ScheduledFuture visibilityTimeoutTask = executorService.schedule(() -> {
-			Message msg = pullFromInvisibleFile(qName, message.get().getMessageId());
-			addFirstToQueueFile(qName, msg);
-			scheduledTaskStore.get(qName).remove(message.get().getMessageId());
-		}, VISIBILITY_TIMEOUT, TimeUnit.SECONDS);
-
-		addToScheduledTaskStore(qName, message.get().getMessageId(), visibilityTimeoutTask);
-		return message;
+		return pull(qUrl, DEFAULT_VISIBILITY_TIMEOUT);
 	}
+
+	Optional<Message> pull(String qUrl, int visibilityTimeout) {
+		String qName = fromQueueUrl(qUrl);
+		lockQ(qName);
+		try {
+			List<Record> records = readAllRecordsFromFile(qName);
+			Optional<Record> nextVisibleRecord = records.stream().filter(Record::isVisible).findFirst();
+			if (!nextVisibleRecord.isPresent()) {
+				return Optional.empty();
+			}
+
+			nextVisibleRecord.get().setDelayInSec(visibilityTimeout);
+			String receiptHandle = "RH-" + idGenerator.nextValue();
+			nextVisibleRecord.get().getMessage().setReceiptHandle(receiptHandle);
+			writeRecordsToFile(qName, records);
+
+			return Optional.of(nextVisibleRecord.get().getMessage().clone());
+		} finally {
+			unlockQ(qName);
+		}
+	}
+
 
 	@Override
 	public void delete(String qUrl, String receiptHandler) {
 		String qName = fromQueueUrl(qUrl);
-
-		String messageId = fromReceiptHandler(receiptHandler);
-		if(scheduledTaskStore.get(qName).get(messageId) == null) {
-			System.out.println("Scheduled task unavailable. Visibility timeout might have been executed. "
-					+ "Message with handler " + receiptHandler + " may not be available for deletion");
-			return;
-		}
-		scheduledTaskStore.get(qName).get(messageId).cancel(false);
-		scheduledTaskStore.get(qName).remove(messageId);
-		pullFromInvisibleFile(qName, messageId);
-	}
-
-	private void addMessageToQueue(String qName, String messageId, String body) {
-		String record = toRecord(messageId, "", body) + NEW_LINE;
-		Path messagePath = Paths.get(BASE_PATH, qName, "messages");
 		lockQ(qName);
 		try {
-			Files.write(messagePath, record.getBytes(), APPEND);
-		} catch (IOException e) {
-			throw new RuntimeException(e);
-		} finally {
-			unlockQ(qName);
-		}
-	}
-
-	private Optional<Message> pollMessageFromQueue(String qName) {
-		Path messagePath = Paths.get(BASE_PATH, qName, "messages");
-		lockQ(qName);
-		try (Stream<String> stream = Files.lines(messagePath)) {
-			List<String> lines = stream.collect(Collectors.toList());
-			if(lines.isEmpty()) {
-				return Optional.empty();
+			List<Record> records = readAllRecordsFromFile(qName);
+			Optional<Record> recordToDelete = records.stream()
+					.filter(r -> r.getMessage().getReceiptHandle() != null && r.getMessage().getReceiptHandle().equals(receiptHandler))
+					.findFirst();
+			if(!recordToDelete.isPresent()) {
+				System.out.println("Message with receiptHandler " + receiptHandler + " is not available for deletion. Visibility timeout might have been executed");
+				return;
 			}
-			String record = lines.remove(0);
-			Files.write(messagePath, lines);
-			return Optional.of(toMessage(record));
-		} catch (IOException e) {
-			throw new RuntimeException(e);
+			records.remove(recordToDelete.get());
+			writeRecordsToFile(qName, records);
 		} finally {
 			unlockQ(qName);
 		}
 	}
 
-	private void addMessageToInvisibleFile(String qName, Message message) {
-		Path invisiblePath = Paths.get(BASE_PATH, qName, "invisibleMessages");
-		String record = toRecord(message) + NEW_LINE;
-		lockQ(qName);
-		try  {
-			Files.write(invisiblePath, record.getBytes(), APPEND);
-		} catch (IOException e) {
-			throw new RuntimeException(e);
-		} finally {
-			unlockQ(qName);
-		}
-	}
-
-	private void addToScheduledTaskStore(String qName, String messageId, ScheduledFuture scheduledFuture) {
-		scheduledTaskStore.putIfAbsent(qName, new ConcurrentHashMap<>());
-		scheduledTaskStore.get(qName).put(messageId, scheduledFuture);
-	}
-
-	private void addFirstToQueueFile(String qName, Message message) {
+	private List<Record> readAllRecordsFromFile(String qName) {
 		Path messagePath = Paths.get(BASE_PATH, qName, "messages");
-		lockQ(qName);
-		try (Stream<String> stream = Files.lines(messagePath)) {
-			List<String> lines = stream.collect(Collectors.toList());
-			lines.add(0, toRecord(message));
+		if(Files.notExists(messagePath)) {
+			return Collections.emptyList();
+		}
+		try(Stream<String> stream = Files.lines(messagePath)) {
+			return stream.filter(StringUtils::isNotBlank).map(Record::fromLine).collect(Collectors.toList());
+		} catch(IOException e) {
+			throw new RuntimeException(e);
+		}
+	}
+
+	private void writeRecordsToFile(String qName, List<Record> records) {
+		Path messagePath = Paths.get(BASE_PATH, qName, "messages");
+		List<String> lines = records.stream().map(Record::toLine).collect(Collectors.toList());
+		try {
 			Files.write(messagePath, lines);
-		} catch (IOException e) {
+		} catch(IOException e) {
 			throw new RuntimeException(e);
-		} finally {
-			unlockQ(qName);
 		}
-	}
-
-	private String fromReceiptHandler(String receiptHandler) {
-		return StringUtils.substringBetween(receiptHandler, "MSG-ID-", "-RH-");
-	}
-
-	private Message pullFromInvisibleFile(String qName, String messageId) {
-		Path invisiblePath = Paths.get(BASE_PATH, qName, "invisibleMessages");
-		lockQ(qName);
-		try (Stream<String> stream = Files.lines(invisiblePath)) {
-			Set<String> lines = stream.collect(Collectors.toSet());
-			Optional<String> record = lines.stream().filter(line -> line.split(":::")[0].equals(messageId)).findFirst();
-			Set<String> remainingLines = lines.stream().filter(line -> !line.split(":::")[0].equals(messageId))
-					.collect(Collectors.toSet());
-			Files.write(invisiblePath, remainingLines);
-			return toMessage(record.orElse(""));
-		} catch (IOException e) {
-			throw new RuntimeException(e);
-		} finally {
-			unlockQ(qName);
-		}
-	}
-
-	private Message toMessage(String record) {
-		String[] fields = record.split(":::");
-		return new Message().withMessageId(fields[0]).withReceiptHandle(fields[1]).withBody(fields[2]);
-	}
-
-	private String toRecord(Message message) {
-		return toRecord(message.getMessageId(), message.getReceiptHandle(), message.getBody());
-	}
-
-	private String toRecord(String messageId, String receiptHandler, String body) {
-		return messageId + ":::" + receiptHandler + ":::" + body;
 	}
 
 	private void setupQueueDirectoryIfAbsent(String qName) {
@@ -225,7 +147,6 @@ class FileQueueService implements QueueService {
 			try {
 				Files.createDirectories(qPath);
 				Files.createFile(Paths.get(qPath.toString(), "messages"));
-				Files.createFile(Paths.get(qPath.toString(), "invisibleMessages"));
 			} catch (IOException e) {
 				throw new RuntimeException(e);
 			} finally {

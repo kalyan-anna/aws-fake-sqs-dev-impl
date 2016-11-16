@@ -14,7 +14,6 @@ import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -49,7 +48,7 @@ public class QueueServiceTest extends BaseTestClass {
 	@Before
 	public void before() throws Exception {
 		if(queueServiceImplClass.equals("InMemoryQueueService")) {
-			this.queueService = new InMemoryQueueService();
+			this.queueService = new InMemoryQueueService(new ConcurrentHashMap<>());
 		}
 		if(queueServiceImplClass.equals("FileQueueService")) {
 			this.queueService = new FileQueueService(new UniversalUniqueIdGenerator());

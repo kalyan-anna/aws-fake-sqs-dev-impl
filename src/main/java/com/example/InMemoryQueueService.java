@@ -33,7 +33,9 @@ import java.util.concurrent.TimeUnit;
  * When a delete request is received, the message is removed from invisibleMessageStore and associated scheduled task
  * for visibility timeout is cancelled.
  *
- * I thought of using DelayQueue but that would have affected concurrency. I'll try to create another branch with DelayQueue impl
+ * I thought of using DelayQueue but that would have affected concurrency. Please checkout the below branch for an implementation based on
+ * DelayQueue
+ * https://github.com/kalyan-anna/aws-fake-sqs-dev-impl/tree/feature/InMemoryDelayQImpl
  */
 class InMemoryQueueService implements QueueService {
 

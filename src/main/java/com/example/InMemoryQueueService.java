@@ -33,6 +33,7 @@ import java.util.concurrent.TimeUnit;
  * When a delete request is received, the message is removed from invisibleMessageStore and associated scheduled task
  * for visibility timeout is cancelled.
  *
+ * I thought of using DelayQueue but that would have affected concurrency. I'll try to create another branch with DelayQueue impl
  */
 class InMemoryQueueService implements QueueService {
 

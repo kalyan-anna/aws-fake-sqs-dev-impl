@@ -50,7 +50,9 @@ class InMemoryQueueService implements QueueService {
 		}
 		nextVisibleMessage.getMessage().setReceiptHandle("RH-" + UUID.randomUUID().toString());
 		nextVisibleMessage.setDelayInSec(visibilityTimeout);
+		//Adding record back to the queue; but it will preserve the order coz ordering is based on creationTime
 		messageStore.get(qName).add(nextVisibleMessage);
+
 		return Optional.of(nextVisibleMessage.getMessage().clone());
 	}
 

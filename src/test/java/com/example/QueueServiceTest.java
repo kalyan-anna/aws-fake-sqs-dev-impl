@@ -24,7 +24,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 /**
- * These tests are like integration tests and common for all implementation. So placed them in separate test class
+ * These tests are integration tests and common for all implementation.
  */
 @RunWith(value = Parameterized.class)
 public class QueueServiceTest extends BaseTestClass {

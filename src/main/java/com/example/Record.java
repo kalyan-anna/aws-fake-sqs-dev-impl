@@ -7,6 +7,9 @@ import java.util.concurrent.TimeUnit;
 
 import static java.lang.System.currentTimeMillis;
 
+/**
+ * Record class used by both InMemory and FileQueueService to hold a Message
+ */
 class Record implements Delayed {
 
 	private static final String NEW_LINE = System.getProperty("line.separator");
@@ -52,7 +55,7 @@ class Record implements Delayed {
 	}
 
 	/**
-	 * Sort by visibility and creationTime to preserve FIFO order
+	 * Sort by visibility and creationTime to preserve FIFO order in DelayQueue
 	 */
 	@Override
 	public int compareTo(Delayed other) {

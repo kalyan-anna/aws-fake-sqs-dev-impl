@@ -1,6 +1,8 @@
 package com.example;
 
 import com.amazonaws.services.sqs.model.Message;
+import static org.apache.commons.lang3.StringUtils.*;
+
 import java.nio.file.Paths;
 import java.util.Optional;
 import java.util.UUID;
@@ -56,7 +58,7 @@ class InMemoryQueueService implements QueueService {
 	public void delete(String qUrl, String receiptHandler) {
 		String qName = fromQueueUrl(qUrl);
 		Record messageToDelete = messageStore.get(qName).stream()
-				.filter(msg -> msg.getMessage().getReceiptHandle() != null && msg.getMessage().getReceiptHandle().equals(receiptHandler))
+				.filter(msg -> isNoneBlank(msg.getMessage().getReceiptHandle()) && msg.getMessage().getReceiptHandle().equals(receiptHandler))
 				.findFirst().orElse(null);
 		messageStore.get(qName).remove(messageToDelete);
 	}

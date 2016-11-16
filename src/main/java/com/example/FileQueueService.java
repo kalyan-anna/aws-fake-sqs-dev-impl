@@ -1,6 +1,7 @@
 package com.example;
 
 import com.amazonaws.services.sqs.model.Message;
+import static org.apache.commons.lang3.StringUtils.*;
 import org.apache.commons.lang3.StringUtils;
 
 import java.io.File;
@@ -101,7 +102,7 @@ class FileQueueService implements QueueService {
 		try {
 			List<Record> records = readAllRecordsFromFile(qName);
 			Optional<Record> recordToDelete = records.stream()
-					.filter(r -> r.getMessage().getReceiptHandle() != null && r.getMessage().getReceiptHandle().equals(receiptHandler))
+					.filter(r -> isNotBlank(r.getMessage().getReceiptHandle()) && r.getMessage().getReceiptHandle().equals(receiptHandler))
 					.findFirst();
 			if(!recordToDelete.isPresent()) {
 				System.out.println("Message with receiptHandler " + receiptHandler + " is not available for deletion. Visibility timeout might have been executed");

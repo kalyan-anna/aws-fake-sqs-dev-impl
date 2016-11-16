@@ -44,14 +44,14 @@ class InMemoryQueueService implements QueueService {
 			return Optional.empty();
 		}
 
-		Record nextMessage = messageStore.get(qName).poll();
-		if(nextMessage == null) {
+		Record nextVisibleMessage = messageStore.get(qName).poll();
+		if(nextVisibleMessage == null) {
 			return Optional.empty();
 		}
-		nextMessage.getMessage().setReceiptHandle("RH-" + UUID.randomUUID().toString());
-		nextMessage.setDelayInSec(visibilityTimeout);
-		messageStore.get(qName).add(nextMessage);
-		return Optional.of(nextMessage.getMessage().clone());
+		nextVisibleMessage.getMessage().setReceiptHandle("RH-" + UUID.randomUUID().toString());
+		nextVisibleMessage.setDelayInSec(visibilityTimeout);
+		messageStore.get(qName).add(nextVisibleMessage);
+		return Optional.of(nextVisibleMessage.getMessage().clone());
 	}
 
 	@Override

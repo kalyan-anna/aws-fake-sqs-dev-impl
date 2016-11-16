@@ -94,7 +94,6 @@ class FileQueueService implements QueueService {
 		}
 	}
 
-
 	@Override
 	public void delete(String qUrl, String receiptHandler) {
 		String qName = fromQueueUrl(qUrl);

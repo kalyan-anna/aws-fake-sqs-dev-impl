@@ -33,7 +33,7 @@ import java.util.concurrent.TimeUnit;
  *
  * I thought of using DelayQueue which would have been simple implementation but that would affected concurrency and
  * also ordering of object occurs only when adding an item. This would not be a foolproof solution as the requirement
- * says the message should be added when visibility timeout.
+ * says the message should be added to the head of the queue when visibility timeout.
  * However I have uploaded another implementation using DelayQueue in separate branch below
  * https://github.com/kalyan-anna/aws-fake-sqs-dev-impl/tree/feature/InMemoryDelayQImpl
  */

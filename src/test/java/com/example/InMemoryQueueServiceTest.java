@@ -47,16 +47,6 @@ public class InMemoryQueueServiceTest extends BaseTestClass {
 		assertThat(messageStore.get(qName).peek().getMessageId(), not(isEmptyOrNullString()));
 	}
 
-	@Test(expected = IllegalArgumentException.class)
-	public void push_shouldThrowException_whenQueueUrlIsInvalid() {
-		queueService.push(null, "dummyMessage");
-	}
-
-	@Test(expected = IllegalArgumentException.class)
-	public void push_shouldThrowException_whenMessageBodyIsInvalid() {
-		queueService.push(qUrlBase + "qName", null);
-	}
-
 	@Test
 	public void pull_shouldPollTheFirstMessageInQueue() {
 		String qName = "Test-Queue";
@@ -85,11 +75,6 @@ public class InMemoryQueueServiceTest extends BaseTestClass {
 		String qName = "Test-Queue";
 		Optional<Message> message = queueService.pull(qUrlBase + qName);
 		assertThat(message.isPresent(), is(false));
-	}
-
-	@Test(expected = IllegalArgumentException.class)
-	public void pull_shouldThrowException_whenQueueUrlIsInvalid() {
-		queueService.pull(null);
 	}
 
 	@Test
@@ -144,15 +129,5 @@ public class InMemoryQueueServiceTest extends BaseTestClass {
 		assertThat(invisibleMessageStore.get(qName).isEmpty(), is(true));
 		assertThat(scheduledTaskStore.get(message.orElse(null).getMessageId()), nullValue());
 		assertThat(future.isCancelled(), is(true));
-	}
-
-	@Test(expected = IllegalArgumentException.class)
-	public void delete_shouldThrowException_whenQueueUrlIsInvalid() {
-		queueService.delete(null, "receiptHandler");
-	}
-
-	@Test(expected = IllegalArgumentException.class)
-	public void delete_shouldThrowException_whenReceiptHandlerIsInvalid() {
-		queueService.delete("qUrl", null);
 	}
 }

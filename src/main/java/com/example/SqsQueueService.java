@@ -15,28 +15,16 @@ class SqsQueueService implements QueueService {
 
   @Override
   public void push(String qUrl, String messageBody) {
-    if(isBlank(qUrl) || isBlank(messageBody)) {
-      throw new IllegalArgumentException("Invalid qUrl or messageBody");
-    }
-
     sqs.sendMessage(qUrl, messageBody);
   }
 
   @Override
   public Optional<Message> pull(String qUrl) {
-    if(isBlank(qUrl)) {
-      throw new IllegalArgumentException("Invalid qUrl");
-    }
-
     return sqs.receiveMessage(qUrl).getMessages().stream().findFirst();
   }
 
   @Override
   public void delete(String qUrl, String receiptHandler) {
-    if(isBlank(qUrl) || isBlank(receiptHandler)) {
-      throw new IllegalArgumentException("Invalid qUrl or receiptHandler");
-    }
-
     sqs.deleteMessage(qUrl, receiptHandler);
   }
 }

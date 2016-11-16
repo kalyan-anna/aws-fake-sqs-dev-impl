@@ -63,9 +63,6 @@ class InMemoryQueueService implements QueueService {
 
 	@Override
 	public void push(String qUrl, String body) {
-		if(isBlank(qUrl) || isBlank(body)) {
-			throw new IllegalArgumentException("Invalid qUrl or messageBody");
-		}
 		String qName = fromQueueUrl(qUrl);
 		messageStore.putIfAbsent(qName, new ConcurrentLinkedDeque<>());
 
@@ -77,9 +74,6 @@ class InMemoryQueueService implements QueueService {
 
 	@Override
 	public Optional<Message> pull(String qUrl) {
-		if(isBlank(qUrl)) {
-			throw new IllegalArgumentException("Invalid qUrl");
-		}
 		String qName = fromQueueUrl(qUrl);
 		if(messageStore.get(qName) == null || messageStore.get(qName).isEmpty()) {
 			return Optional.empty();
@@ -112,9 +106,6 @@ class InMemoryQueueService implements QueueService {
 
 	@Override
 	public void delete(String qUrl, String receiptHandler) {
-		if(isBlank(qUrl) || isBlank(receiptHandler)) {
-			throw new IllegalArgumentException("Invalid qUrl or receiptHandler");
-		}
 		String qName = fromQueueUrl(qUrl);
 
 		String messageId = fromReceiptHandler(receiptHandler);

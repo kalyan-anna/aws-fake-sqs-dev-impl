@@ -35,16 +35,6 @@ public class FileQueueServiceTest extends BaseTestClass {
 		deleteAllSubDirectories(Paths.get(BASE_PATH));
 	}
 
-	@Test(expected = IllegalArgumentException.class)
-	public void push_shouldThrowException_whenQueueUrlIsInvalid() {
-		queueService.push(null, "dummyMessage");
-	}
-
-	@Test(expected = IllegalArgumentException.class)
-	public void push_shouldThrowException_whenMessageBodyIsInvalid() {
-		queueService.push(qUrlBase + "qName", null);
-	}
-
 	@Test
 	public void push_shouldSetupQueueDirectory_whenDoesNotExists() throws Exception {
 		String qName = "test-queue";
@@ -138,16 +128,6 @@ public class FileQueueServiceTest extends BaseTestClass {
 		ScheduledFuture task = scheduledTaskStore.get(qName).get(message.orElse(null).getMessageId());
 		assertThat(task, notNullValue());
 		assertThat(task.isCancelled(), is(false));
-	}
-
-	@Test(expected = IllegalArgumentException.class)
-	public void delete_shouldThrowException_whenQueueUrlIsInvalid() {
-		queueService.delete(null, "receiptHandler");
-	}
-
-	@Test(expected = IllegalArgumentException.class)
-	public void delete_shouldThrowException_whenReceiptHandlerIsInvalid() {
-		queueService.delete("qUrl", null);
 	}
 
 	@Test

@@ -48,16 +48,6 @@ public class SqsQueueServiceTest extends BaseTestClass {
 		verify(sqs, times(1)).receiveMessage(anyString());
 	}
 
-	@Test(expected = IllegalArgumentException.class)
-	public void push_shouldThrowException_whenQueueUrlIsInvalid() {
-		queueService.push(null, "dummyMessage");
-	}
-
-	@Test(expected = IllegalArgumentException.class)
-	public void push_shouldThrowException_whenMessageBodyIsInvalid() {
-		queueService.push("qUrl", null);
-	}
-
 	@Test
 	public void pull_shouldReturnEmptyOptional_whenThereIsNoMessageInQueue() {
 		when(sqs.listQueues(anyString())).thenReturn(new ListQueuesResult().withQueueUrls("qUrl"));
@@ -68,24 +58,10 @@ public class SqsQueueServiceTest extends BaseTestClass {
 		assertThat(message.isPresent(), is(false));
 	}
 
-	@Test(expected = IllegalArgumentException.class)
-	public void pull_shouldThrowException_whenQueueUrlIsInvalid() {
-		queueService.pull(null);
-	}
-
 	@Test
 	public void delete_shouldInvokeDeleteMessageOnSQS() {
 		queueService.delete("qUrl", "receiptHandler");
 		verify(sqs, times(1)).deleteMessage(anyString(), anyString());
 	}
 
-	@Test(expected = IllegalArgumentException.class)
-	public void delete_shouldThrowException_whenQueueUrlIsInvalid() {
-		queueService.delete(null, "receiptHandler");
-	}
-
-	@Test(expected = IllegalArgumentException.class)
-	public void delete_shouldThrowException_whenReceiptHandlerIsInvalid() {
-		queueService.delete("qUrl", null);
-	}
 }

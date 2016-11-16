@@ -74,9 +74,6 @@ class FileQueueService implements QueueService {
 
 	@Override
 	public void push(String qUrl, String messageBody) {
-		if(isBlank(qUrl) || isBlank(messageBody)) {
-			throw new IllegalArgumentException("Invalid qName or messageBody");
-		}
 		String qName = fromQueueUrl(qUrl);
 
 		setupQueueDirectoryIfAbsent(qName);
@@ -86,9 +83,6 @@ class FileQueueService implements QueueService {
 
 	@Override
 	public Optional<Message> pull(String qUrl) {
-		if(isBlank(qUrl)) {
-			throw new IllegalArgumentException("Invalid qUrl");
-		}
 		String qName = fromQueueUrl(qUrl);
 
 		Optional<Message> message = pollMessageFromQueue(qName);
@@ -111,9 +105,6 @@ class FileQueueService implements QueueService {
 
 	@Override
 	public void delete(String qUrl, String receiptHandler) {
-		if(isBlank(qUrl) || isBlank(receiptHandler)) {
-			throw new IllegalArgumentException("Invalid qUrl or receiptHandler");
-		}
 		String qName = fromQueueUrl(qUrl);
 
 		String messageId = fromReceiptHandler(receiptHandler);

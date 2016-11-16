@@ -19,7 +19,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import static java.nio.file.StandardOpenOption.*;
-import static org.apache.commons.lang3.StringUtils.*;
 
 /**
  * FileQueueService creates separate folder for each queue based on queueName and maintains two files
